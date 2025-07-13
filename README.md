@@ -25,3 +25,4 @@ This is the alpha version of the Counter-Strike 2 demo analysis GUI, built with 
 - Clean GUI layout with tabs: Console, Event Log, Advanced Stats, Chat & Summary.
 - Easy export of stats and JSON.
 - Future: advanced heuristics (counter-strafe rating, reaction time), replay visualization.
+![alt text](image.png)
