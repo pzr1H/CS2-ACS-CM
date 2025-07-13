@@ -1,55 +1,46 @@
-# event_log.py – Display tab for parsed event logs and summary
+#!/usr/bin/env python3
+# cs2_parser/event_log.py – Event Log Display for CS2 ACS GUI
 
 import tkinter as tk
 from tkinter import ttk
-from tkinter.scrolledtext import ScrolledText
-import json
 
 
-def display_events(parent, data):
-    # Clear parent frame
-    for widget in parent.winfo_children():
-        widget.destroy()
+def display_events(tree: ttk.Treeview, data: dict) -> None:
+    """
+    Populate the given Treeview widget with event data.
 
-    events = data.get('events') or data.get('Events') or []
+    Each event in data['events'] should be a dict with at least:
+      - 'type': event type string
+      - 'tick': integer tick count
+      - 'round': integer round number
+      - 'user_name' or 'name': player name
+    """
+    # clear old entries
+    tree.delete(*tree.get_children())
 
-    notebook = ttk.Notebook(parent)
-    notebook.pack(fill='both', expand=True)
+    # insert header
+    tree.insert('', 'end', text='Tick / Round / EventType / Details')
 
-    summary_tab = ttk.Frame(notebook)
-    events_tab = ttk.Frame(notebook)
-    notebook.add(summary_tab, text='Summary')
-    notebook.add(events_tab, text='Raw Events')
+    # iterate events with error handling
+    for ev in data.get('events', []):
+        try:
+            ev_type = ev.get('type', 'Unknown')
+            tick = ev.get('tick', 0)
+            rnd = ev.get('round', -1)
+            # determine display name
+            name = ev.get('user_name') or ev.get('name') or ''
+            details = ev.get('details', {})
+            if isinstance(details, dict):
+                detail_str = details.get('string', '')
+            else:
+                detail_str = str(details)
 
-    # Summary: Show round count and match score if available
-    summary_text = ScrolledText(summary_tab, wrap='word', height=10)
-    summary_text.pack(fill='both', expand=True)
-    summary_lines = []
+            # summarize nested info
+            display_text = f"{tick} / {rnd} / {ev_type} / {name} {detail_str}"
+            tree.insert('', 'end', text=display_text)
+        except Exception as e:
+            # log malformed event and continue
+            tree.insert('', 'end', text=f"Error displaying event: {e}")
 
-    rounds = sorted({int(ev.get('round')) for ev in events if isinstance(ev.get('round'), (int, float))})
-    summary_lines.append(f"Total Rounds Parsed: {len(rounds)}")
-
-    team_scores = {}
-    for ev in events:
-        if ev.get('type', '').lower() == 'round_end':
-            winner = ev.get('details', {}).get('winningTeam')
-            if winner:
-                team_scores[winner] = team_scores.get(winner, 0) + 1
-
-    for team, score in team_scores.items():
-        summary_lines.append(f"{team}: {score} rounds won")
-
-    summary_text.insert(tk.END, '\n'.join(summary_lines))
-    summary_text.config(state='disabled')
-
-    # Raw Events: Display JSON text
-    event_text = ScrolledText(events_tab, wrap='word')
-    event_text.pack(fill='both', expand=True)
-
-    try:
-        pretty = json.dumps(events, indent=2)
-        event_text.insert(tk.END, pretty)
-    except Exception as e:
-        event_text.insert(tk.END, f"[Error rendering events] {e}")
-
-    event_text.config(state='disabled')
+# EOF <AR <3 read 60 lines | TLOC 60 | 60ln of code | 2025-07-13T15:45-04:00> <AR <3 read 60 lines | TLOC 60 | 60ln of code | 2025-07-13T15:45-04:00>
+# EOF pzr1H 46 lines | !testing event_log display

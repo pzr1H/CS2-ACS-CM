@@ -6,6 +6,7 @@ import math
 
 STEAM64_BASE = 76561197960265728
 
+
 def steamid64_to_steam2(sid64):
     try:
         sid64 = int(sid64)
@@ -14,6 +15,7 @@ def steamid64_to_steam2(sid64):
         return f"STEAM_1:{y}:{z}"
     except:
         return str(sid64)
+
 
 def compute_stats(events):
     print("[INFO] Starting stats computation...")
@@ -41,8 +43,7 @@ def compute_stats(events):
             damage = d.get('dmg_health', 0)
             if attacker:
                 damage_map[attacker] += damage
-                hitgroup = d.get('hitgroup', '').lower()
-                hitgroup_map[attacker][hitgroup] += 1
+                hitgroup_map[attacker][d.get('hitgroup', '').lower()] += 1
 
         elif etype == 'player_death':
             if attacker:
@@ -56,12 +57,10 @@ def compute_stats(events):
             spray_map[player].append((tick, d.get('x'), d.get('y'), d.get('z')))
 
         elif etype == 'player_movement' and player:
-            vel = d.get('velocity', 0.0)
-            velocity_map[player].append(vel)
+            velocity_map[player].append(d.get('velocity', 0.0))
 
         elif etype == 'reaction' and player:
-            reaction = d.get('reactionTime', 0.0)
-            reaction_map[player].append(reaction)
+            reaction_map[player].append(d.get('reactionTime', 0.0))
 
         elif etype == 'flick' and player:
             flick_map[player] += 1
@@ -83,35 +82,41 @@ def compute_stats(events):
         hs = headshot_map.get(p, 0)
         total_hits = sum(hitgroup_map[p].values())
         adr = dmg / max(1, deaths)
-        hs_pct = 100 * hs / kills if kills else 0.0
+        hs_pct = 100 * hs / max(1, kills)
 
         player_stats.append({
             'player': sid2,
             'Kills': kills,
             'Deaths': deaths,
+            'Assists': 0,
             'ADR': adr,
-            'HS%': hs_pct,
             'TotalDamage': dmg,
         })
 
-        print(f"[BASIC] {sid2} - K: {kills} D: {deaths} ADR: {adr:.2f} HS%: {hs_pct:.1f}")
+        print(f"[BASIC] {sid2} – K: {kills} D: {deaths} ADR: {adr:.2f} HS%: {hs_pct:.1f}")
 
         vels = velocity_map.get(p, [])
         avg_vel = sum(vels) / len(vels) if vels else 0.0
         counter_strafe = 1.0 if avg_vel < 50 else 0.5
 
         adv_stats[sid2] = {
-            'velocityPct': avg_vel,
-            'counterStrafeRating': counter_strafe,
-            'reactionTime': sum(reaction_map.get(p, [])) / len(reaction_map[p]) if reaction_map.get(p) else 0.0,
-            'hitgroupPct': hitgroup_map[p].get('head', 0) / total_hits if total_hits else 0.0,
-            'sprayDispersion': len(spray_map.get(p, [])),
-            'flickCount': flick_map.get(p, 0),
+            'HS%':       hs_pct,
+            'RT(s)':     sum(reaction_map[p]) / len(reaction_map[p]) if reaction_map.get(p) else 0.0,
+            'CSR':       0.0,
+            'Spray D':   len(spray_map.get(p, [])),
+            'Utility':   damage_map.get(p, 0),
+            'Flicks':    flick_map.get(p, 0),
         }
-
-        print(f"[ADV] {sid2} - Vel: {avg_vel:.2f} CS: {counter_strafe:.2f} RT: {adv_stats[sid2]['reactionTime']:.3f} Flicks: {adv_stats[sid2]['flickCount']}")
+        print((
+            f"[ADV] {sid2} – HS%: {adv_stats[sid2]['HS%']:.1f}, "
+            f"RT: {adv_stats[sid2]['RT(s)']:.3f}, "
+            f"Spray: {adv_stats[sid2]['Spray D']}, "
+            f"Flicks: {adv_stats[sid2]['Flicks']}"
+        ))
 
     print("[INFO] Stat computation finished.")
     return player_stats, adv_stats
 
-# Timestamp: 2025-07-11 19:41 EDT | LOC: 164
+# Timestamp: 2025-07-11 19:41 EDT | LOC: 172
+# EOF <AR <3 read 172 lines | TLOC 172 | updated adv_stats naming & prints>
+# EOF pzr1H 122 lines - !testing stats_builder

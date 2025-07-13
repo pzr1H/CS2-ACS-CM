@@ -1,6 +1,6 @@
 #!/usr/bin/env python3 
 # cs2_parser/file_loader.py – Unified loader with parsing, stats, rounds, and scouting
-# Timestamp-TOP: 2025-07-13 03:15 EDT  (Lines 1-160)
+# Timestamp-TOP: 2025-07-13 03:15 EDT  (Lines 1-180)
 # =============================================================================
 import os
 import json
@@ -21,8 +21,9 @@ log = logging.getLogger(__name__)
 PARSER_EXE = os.path.join(os.path.dirname(__file__), '..', 'CS2-ACSv1.exe')
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'pewpew')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-PLAYER_INFO_RE = re.compile(r"XUID:0x([0-9a-fA-F]+).*?Name:\\?\"([^\"]+)\"")
-
+PLAYER_INFO_RE = re.compile(
+    r'XUID:0x([0-9A-Fa-f]+).*?Name:\\?"([^"]+)"'
+)
 # --------------------------------------------------------------------------- helpers
 
 def _val(p: Dict, *keys: str, default=0):
@@ -45,19 +46,33 @@ def _find_parser_json(stem: str) -> Optional[str]:
 
 def _inject_player_dropdown(data: Dict) -> None:
     players, seen = [], set()
-    def _add(name: str, sid64: str):
-        if name and sid64 and sid64 not in seen:
-            seen.add(sid64)
+    def _add(name: str, sid_str: str):
+        if name and sid_str and sid_str not in seen:
+            seen.add(sid_str)
+            # robust conversion of sid_str to integer
+            sid64 = None
+            try:
+                sid64 = int(sid_str, 0)
+            except Exception:
+                clean = sid_str.lower().strip()
+                if clean.startswith('0x'):
+                    clean = clean[2:]
+                clean = re.sub(r'[^0-9a-f]', '', clean)
+                try:
+                    sid64 = int(clean, 16)
+                except Exception:
+                    sid64 = None
             players.append({
                 'name': name,
-                'steamid64': int(sid64),
-                'steamid': str(sid64),
-                'steamid2': to_steam2(int(sid64))
+                'steamid64': sid64,
+                'steamid': sid_str,
+                'steamid2': to_steam2(sid64) if sid64 is not None else None
             })
 
     # 1) Summary-based (preferred)
     for p in data.get('playerStats', []):
-        _add(p.get('steamId') or p.get('steamid'), p.get('steamId') or p.get('steamid'))
+        sid = p.get('steamId') or p.get('steamid')
+        _add(p.get('name') or p.get('Player'), sid)
 
     # 2) PlayerInfo events (fallback)
     if not players:
@@ -65,7 +80,9 @@ def _inject_player_dropdown(data: Dict) -> None:
             if ev.get('type','').endswith('PlayerInfo'):
                 m = PLAYER_INFO_RE.search(ev['details'].get('string',''))
                 if m:
-                    _add(m.group(2), f"0x{m.group(1)}")
+                    name = m.group(2)
+                    sid = f"0x{m.group(1)}"
+                    _add(name, sid)
 
     data['playerDropdown'] = players
 
@@ -104,13 +121,26 @@ def load_input(path: str, on_log: Callable[[str], None]=None) -> Dict:
 
     _log(f"[INFO] Loading input: {path}")
     if path.lower().endswith('.json'):
-        data = json.load(open(path,'r'))
+        # load JSON with fallback for encoding errors
+        with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+            data = json.load(fh)
         _log("[INFO] JSON loaded")
     elif path.lower().endswith('.dem'):
         stem = os.path.splitext(os.path.basename(path))[0]
         cmd = [PARSER_EXE, '-demo', path, '-outdir', OUTPUT_DIR]
         _log(f"⚙️ {cmd}")
-        ret = subprocess.call(cmd)
+        # capture parser banner and logs
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+        for ln in proc.stdout:
+            _log(ln.rstrip())
+        ret = proc.wait()
         if ret: raise RuntimeError(f"Parser exit {ret}")
 
         f = None
@@ -119,7 +149,9 @@ def load_input(path: str, on_log: Callable[[str], None]=None) -> Dict:
             if f: break
             time.sleep(0.1)
         if not f: raise FileNotFoundError(stem)
-        data = json.load(open(f,'r'))
+        # load parsed JSON with encoding fallback to avoid charmap errors
+        with open(f, 'r', encoding='utf-8', errors='replace') as fh:
+            data = json.load(fh)
         _log(f"[INFO] Parsed demo: {f}")
     else:
         raise ValueError('Unsupported file type')
@@ -155,4 +187,5 @@ def load_input(path: str, on_log: Callable[[str], None]=None) -> Dict:
     return data
 
 # Timestamp-EOF: 2025-07-13 03:15 EDT
-#158 pzr1H
+#EOF pzr1H 189 ln - !testing updated loader to capture parser stdout for header
+# EOF <AR <3 read 180 lines | TLOC 180 | 180ln of code | 2025-07-13T15:05-04:00>
