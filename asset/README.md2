@@ -1,0 +1,8 @@
+Essential Files:
+.bsp: The compiled map file.
+.nav: The navigation mesh file, crucial for bot pathfinding.
+.txt: Loading screen text file (optional).
+.kv: Game mode and character skin configuration file (optional).
+.dds: Radar image file (optional). 
+
+^^ prep for auto clone mimic () to build custom workshop

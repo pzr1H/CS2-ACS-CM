@@ -1,0 +1,34 @@
+*** Begin Patch to main.py
+*** Update File: main.py
+@@
+-# Add parser folder to path & import helpers
+-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cs2_parser"))
+-from cs2_parser.file_loader   import load_input
++import sys, os
++# Add parser folder to path & import helpers
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cs2_parser"))
++from cs2_parser.file_loader   import load_input
+@@
+-from cs2_parser.round_utils   import to_steam2
++from cs2_parser.round_utils   import to_steam2
++# Add utils folder to path & import centralized dropdown parsers
++sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
++from dropdown_utils import parse_player_dropdown
++from round_dropdown_utils import parse_round_dropdown
+@@ class CS2ParserApp:
+-    def _populate_rounds(self):
+-        rounds=self.json_data.get("round_indices",[])
+-        labels=self.json_data.get("round_labels",[])
+-        if len(rounds)>1:
+-            labels.insert(0,"All Rounds"); rounds.insert(0,-1)
+-        self.rounds=rounds; self.cb_round.config(values=labels)
+-        if labels: self.cb_round.current(0)
++    def _populate_rounds(self):
++        # Use centralized parser to build round dropdown
++        events = self.json_data.get('events', [])
++        indices, labels = parse_round_dropdown(events)
++        self.rounds = indices
++        self.cb_round.config(values=labels)
++        if labels:
++            self.cb_round.current(0)
+*** End Patch
