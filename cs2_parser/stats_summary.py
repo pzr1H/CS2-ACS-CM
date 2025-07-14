@@ -1,118 +1,152 @@
-# cs2_parser/stats_summary.py – Advanced Stats Display for CS2 ACS GUI (Patched)
-# Timestamp-TOP: 2025-07-13 16:30 EDT
-
+#!/usr/bin/env python3
+# cs2_parser/stats_summary.py – Advanced Stats Tab with Scouting Integration
+# Timestamp-TOP: 2025-07-12 23:45 EDT  (Lines 1-163)
+# =============================================================================
 import tkinter as tk
 from tkinter import ttk
-import logging
-
 from .round_utils import to_steam2
+import logging
 
 log = logging.getLogger(__name__)
 
 
-def display_stats_summary(frame: ttk.Frame, data: dict, round_index: int = None) -> None:
+def compute_cheater_likelihood(scout_data: dict) -> float:
     """
-    Populate the given frame with advanced stats.
-
-    - `data['advancedStats']` is a dict mapping Steam-2 IDs to stat dicts.
-    - `data['playerStats']` is a list of per-player stat summaries with 'player' = Steam-2.
-    - `round_index`: if provided, filter stats to that round; -1 or None for all rounds.
+    Simple heuristic: VAC ban = 1.0; otherwise based on cheating-comments and vac-friend signals.
     """
-    # clear old UI
-    for widget in frame.winfo_children():
-        widget.destroy()
+    if scout_data.get('vac_banned'):
+        return 1.0
+    score = 0.0
+    score += min(1.0, scout_data.get('cheating_comments_count', 0) * 0.1)
+    score += min(1.0, scout_data.get('friends_vac_banned', 0) * 0.02)
+    return round(score, 2)
 
-    # 1) Select appropriate stats slice
-    if round_index is not None and round_index != -1 and 'statsByRound' in data:
-        block = data['statsByRound'].get(round_index, {})
-        players = block.get('playerStats', []) or []
-        adv_map  = block.get('advancedStats', {}) or {}
+
+def display_stats_summary(parent, data, roundIndex=None):
+    """
+    Render a Treeview of basic, advanced, and scouting stats, showing player names with Steam2 IDs.
+    Handles fallback and normalizes keys to STEAM_1 format.
+    """
+    # 1) Determine stats slice
+    if roundIndex is not None and 'statsByRound' in data:
+        block = data['statsByRound'].get(roundIndex, {})
+        playerStats = block.get('playerStats', {}) or {}
+        advancedStats = block.get('advancedStats', {}) or {}
     else:
-        players = data.get('playerStats', []) or []
-        adv_map  = data.get('advancedStats', {})   or {}
+        playerStats = data.get('playerStats', {}) or {}
+        advancedStats = data.get('advancedStats', {}) or {}
 
-    scout_map = data.get('scoutStats', {}) or {}
+    scoutStats = data.get('scoutStats', {}) or {}
 
-    # 2) Build display name mapping from dropdown and scout data
+    # 2) Build name map from playerDropdown and scoutStats
     name_map = {}
     for entry in data.get('playerDropdown', []):
-        sid64 = entry.get('steamid64')
-        nm    = entry.get('name')
-        if sid64 is not None and nm:
-            try:
-                s2 = to_steam2(sid64)
-            except Exception:
-                s2 = str(sid64)
-            name_map[s2] = nm
-    for s2, info in scout_map.items():
-        persona = info.get('persona_name')
+        steam2 = entry.get('steamid2') or to_steam2(entry.get('steamid64',0))
+        name = entry.get('name') or ''
+        name_map[steam2] = name
+
+    # override with official persona_name from scoutStats if available
+    for steam2, s in scoutStats.items():
+        persona = s.get('persona_name')
         if persona:
-            name_map[s2] = persona
+            name_map[steam2] = persona
 
-    log.debug(f"Stats summary keys: {[p.get('player') for p in players]}")
+    # 3) Fallback list of dicts
+    if isinstance(playerStats, list):
+        temp_stats = {}
+        for row in playerStats:
+            key = row.get('Player') or row.get('player')
+            if key:
+                temp_stats[key] = {
+                    'kills': row.get('Kills', ''),
+                    'deaths': row.get('Deaths', ''),
+                    'assists': row.get('Assists', ''),
+                    'adr': row.get('ADR', ''),
+                }
+        playerStats = temp_stats
+        advancedStats = {}
 
-    # 3) Define columns
-    basic_cols = ['Player', 'Kills', 'Deaths', 'ADR']
-    adv_cols   = ['HS%', 'RT(s)', 'CSR', 'Spray D', 'Utility', 'Flicks']
+    # 4) Ensure dicts
+    if not isinstance(playerStats, dict):
+        temp_stats, temp_adv = {}, {}
+        for steam2 in name_map:
+            temp_stats[steam2] = {}
+            temp_adv[steam2] = {}
+        playerStats = temp_stats
+        advancedStats = temp_adv
+
+    # 5) Normalize keys
+    norm_p, norm_a = {}, {}
+    for k,v in playerStats.items():
+        s2 = k
+        if isinstance(k,str) and k.isdigit():
+            try: s2 = to_steam2(int(k))
+            except: s2 = k
+        norm_p[s2] = v
+        norm_a[s2] = advancedStats.get(k, {})
+    playerStats, advancedStats = norm_p, norm_a
+
+    log.debug(f"Stats summary keys: {list(playerStats.keys())}")
+
+    # 6) Define columns
+    basic_cols = ['Player', 'Kills', 'Deaths', 'Assists', 'ADR']
+    adv_cols   = ['HS%', 'Reaction', 'CSR', 'Spray', 'Utility']
     cols = basic_cols + adv_cols
-    if scout_map:
-        scout_cols = ['VAC?', 'GameBans', 'CS2Hours', 'CheatCom', 'Likelihood']
+    if scoutStats:
+        scout_cols = [
+            'Steam Name', 'VAC Banned?', 'Community Banned?',
+            'Game Bans', 'Economy Ban', 'CS2 Hours',
+            'Vac-Fri Bans', 'Cheat Comments', 'Cheater Likelihood'
+        ]
         cols += scout_cols
 
-    # 4) Setup Treeview
-    tree = ttk.Treeview(frame, columns=cols, show='headings')
-    for c in cols:
-        tree.heading(c, text=c)
-        tree.column(c, anchor='center')
-    tree.pack(fill='both', expand=True)
+    # 7) Clear previous
+    for widget in parent.winfo_children():
+        widget.destroy()
 
-    # 5) Populate rows
-    for p in players:
-        steam2 = p.get('player') or ''
-        display_name = name_map.get(steam2, steam2)
+    # 8) Treeview setup
+    tree = ttk.Treeview(parent, columns=cols, show='headings')
+    for col in cols:
+        tree.heading(col, text=col)
+        tree.column(col, width=100, anchor='center')
 
-        # Basic stats
-        kills  = p.get('Kills', 0)
-        deaths = p.get('Deaths', 0)
-        adr    = p.get('ADR', 0.0)
-
-        # Advanced stats
-        adv = adv_map.get(steam2, {})
-        hs_pct = adv.get('HS%', 0.0)
-        rt     = adv.get('RT(s)', 0.0)
-        csr    = adv.get('CSR', 0.0)
-        spray  = adv.get('Spray D', 0)
-        util   = adv.get('Utility', 0)
-        flicks = adv.get('Flicks', 0)
-
+    # 9) Populate
+    for steam2, stats in playerStats.items():
+        name = name_map.get(steam2, '')
+        display_name = f"{name} ({steam2})"
         row = [
             display_name,
-            kills,
-            deaths,
-            f"{adr:.1f}",
-            f"{hs_pct:.1f}",
-            f"{rt:.3f}",
-            f"{csr:.2f}",
-            spray,
-            util,
-            flicks,
+            stats.get('kills',''),
+            stats.get('deaths',''),
+            stats.get('assists',''),
+            stats.get('adr','')
         ]
-
-        # Scout stats
-        if scout_map:
-            sc = scout_map.get(steam2, {})
-            vac    = 'Yes' if sc.get('vac_banned') else 'No'
-            gbans  = sc.get('game_bans', 0)
-            hrs    = sc.get('hours_played_cs2', 0.0)
-            coms   = sc.get('cheating_comments_count', 0)
-            # Simple likelihood heuristic: vac bans = 1.0, else 0.1 per comment
-            likelihood = 1.0 if sc.get('vac_banned') else round(min(1.0, coms * 0.1), 2)
-            row += [vac, gbans, f"{hrs:.1f}", coms, likelihood]
-
+        adv = advancedStats.get(steam2, {})
+        row += [
+            f"{adv.get('hs_percent',0.0):.1f}" if adv.get('hs_percent') is not None else '',
+            f"{adv.get('reaction_time',0.0):.2f}" if adv.get('reaction_time') is not None else '',
+            f"{adv.get('csr',0.0):.2f}" if adv.get('csr') is not None else '',
+            f"{adv.get('spray_dispersion',0.0):.2f}" if adv.get('spray_dispersion') is not None else '',
+            stats.get('utility_damage','')
+        ]
+        if scoutStats:
+            s = scoutStats.get(steam2,{})
+            row += [
+                s.get('persona_name',''),
+                'Yes' if s.get('vac_banned') else 'No',
+                'Yes' if s.get('community_banned') else 'No',
+                s.get('game_bans',''),
+                s.get('economy_ban',''),
+                f"{s.get('hours_played_cs2',0.0):.2f}" if s.get('hours_played_cs2') is not None else '',
+                s.get('friends_vac_banned',''),
+                s.get('cheating_comments_count',''),
+                compute_cheater_likelihood(s)
+            ]
         tree.insert('', 'end', values=row)
 
+    # 10) Pack
+    tree.pack(fill='both', expand=True)
     return tree
 
-# Timestamp-EOF: 2025-07-13 16:30 EDT
-# EOF <AR <3 read  eighty lines | TLOC  eighty | 88ln of code | patched advanced stats logic>
-# EOF pzr1h 118 ln - !testing stats_summary patch
+# Timestamp-EOF: 2025-07-12 23:45 EDT  | TLOC 163
+#EOF pzr1H 152 lines 2 fixes attempted: names include Steam2 IDs

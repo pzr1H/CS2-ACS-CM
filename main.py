@@ -297,4 +297,4 @@ if __name__ == "__main__":
     app = CS2ParserApp(root)
     root.mainloop()
 # EOF <AR <3 updated entire main.py for improved logic and tagged logging | TLOC 286 | 2025-07-13T15:20-04:00>
-# EOF pzr1H 300 lines !investigate why stats_summary not displaying - checking events_log.py
+# EOF pzr1H 300 lines !investigate why stats_summary not displaying - probably need to ask claude

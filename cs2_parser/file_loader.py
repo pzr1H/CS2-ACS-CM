@@ -187,5 +187,5 @@ def load_input(path: str, on_log: Callable[[str], None]=None) -> Dict:
     return data
 
 # Timestamp-EOF: 2025-07-13 03:15 EDT
-#EOF pzr1H 189 ln - !testing updated loader to capture parser stdout for header
+#EOF pzr1H 191 ln - !testing updated loader to capture parser stdout for header
 # EOF <AR <3 read 180 lines | TLOC 180 | 180ln of code | 2025-07-13T15:05-04:00>
