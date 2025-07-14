@@ -3,7 +3,7 @@
 from typing import List, Dict
 import re
 
-from cs2_parser.round_utils import to_steam2
+from utils.round_utils import to_steam2
 
 
 def parse_player_dropdown(entries: List[Dict]) -> List[Dict]:

@@ -1,6 +1,6 @@
 # utils/round_dropdown_utils.py
 from typing import List, Tuple, Dict
-from cs2_parser.round_utils import build_round_metadata
+from utils.round_utils import build_round_metadata
 
 def parse_round_dropdown(events: List[Dict]) -> Tuple[List[int], List[str]]:
     """

@@ -16,7 +16,7 @@ from cs2_parser.file_loader   import load_input
 from cs2_parser.event_log     import display_events
 from cs2_parser.stats_summary import display_stats_summary
 from cs2_parser.chat_summary  import display_chat_summary
-from cs2_parser.round_utils   import to_steam2
+from utils.round_utils import to_steam2
 
 # Add utils folder to path & import centralized dropdown parsers
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
