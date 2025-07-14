@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from typing import List, Dict, Callable, Optional
 
-from .round_utils import build_round_metadata, to_steam2
+from round_utils import build_round_metadata, to_steam2
 from .stats_builder import compute_stats
 
 log = logging.getLogger(__name__)
