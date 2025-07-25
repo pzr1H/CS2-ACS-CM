@@ -70,21 +70,9 @@ def trace(func):
 # BLOCK 3 — Lightweight Trace Logging (Minimal)
 # =============================================================================
 
-def trace_log(func):
-    """
-    Decorator to log function calls and arguments (for debugging).
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        log.debug(f"[TRACE] Calling {func.__name__} with args={args}, kwargs={kwargs}")
-        try:
-            result = func(*args, **kwargs)
-            log.debug(f"[TRACE] {func.__name__} returned {result}")
-            return result
-        except Exception as e:
-            log.error(f"[TRACE] {func.__name__} failed with {e}", exc_info=True)
-            raise
-    return wrapper
+def trace_log(source, message):
+    print(f"[{source.upper()}] {message}")
+
 
 # =============================================================================
 # BLOCK 4 — Future Log Hooks (Cross-Module Debugging Events)

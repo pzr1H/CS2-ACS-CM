@@ -1,33 +1,27 @@
 #!/usr/bin/env python3
 # =============================================================================
 # file_loader.py — CS2 ACS Data Loader (Sanitized Fallback + Tablestakes)
-# Timestamp‑TOP: 2025‑07‑25T23:30‑EDT | v0.0025‑REPOSTED
+# Timestamp‑TOP: 2025‑07‑25T23:59‑EDT | v0.0029-FIXED
 # =============================================================================
 
 import os, json, logging, re
 from tkinter import filedialog
 from typing import Dict, List
 
-# External Module Imports — Shared Util Stack
 from utils.steam_utils import to_steam2
 from cs2_parser.fallback_parser import inject_fallback_stats
-from utils.data_sanitizer import sanitize_metadata  # Injected Sanitation Layer
+from utils.data_sanitizer import sanitize_metadata
 
 log = logging.getLogger(__name__)
 
-# Hardcoded Paths for Parser Executable and Output Folder
 PARSER_EXE = "C:/Users/jerry/Downloads/CS2-ACS-CM/CS2-ACSv1.exe"
 OUTPUT_DIR = "./pewpew"
-# -----------------------------------------------------------------------------
-# Load JSON or DEMO input and parse to dictionary
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 1: Load .json or .dem, run parser if needed, return dict
+# =============================================================================
 
 def load_input(file_path: str) -> Dict:
-    """
-    Attempts to load a .json or .dem file and return the parsed event dictionary.
-    Executes external parser if .dem file is provided.
-    Enriches data with fallback stats and sanitation.
-    """
     log.info(f"🔍 load_input triggered: {file_path}")
     if not file_path:
         return None
@@ -58,8 +52,8 @@ def load_input(file_path: str) -> Dict:
             inject_fallback_stats(data)
 
         enrich_metadata(data)
-        sanitize_metadata(data)  # Schema cleanup and gap filler
-        data = enforce_schema_safety(data)  # External validator
+        sanitize_metadata(data)
+        data = enforce_schema_safety(data)
 
         log.debug(f"DEBUG-LEN playerStats → {len(data.get('playerStats', {}))}")
         return data
@@ -67,17 +61,14 @@ def load_input(file_path: str) -> Dict:
     except Exception as e:
         log.error(f"❌ load_input failed: {e}")
         return None
-# -----------------------------------------------------------------------------
-# Extract players using regex from GenericGameEvent
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 2: Regex fallback player dropdown from GenericGameEvent
+# =============================================================================
 
 PLAYER_INFO_RE = re.compile(r'XUID:0x([0-9a-fA-F]+).*?Name:\\?\"([^\"]+)\"')
 
 def extract_players_from_events(events: List[Dict]) -> List[Dict]:
-    """
-    Searches GenericGameEvent logs for player XUIDs and names.
-    Builds a fallback dropdown block for player selector if needed.
-    """
     found = {}
     for ev in events:
         if ev.get("type") != "events.GenericGameEvent":
@@ -90,15 +81,12 @@ def extract_players_from_events(events: List[Dict]) -> List[Dict]:
             steam2 = to_steam2(int(sid64))
             found[steam2] = {"steamid": sid64, "name": name}
     return list(found.values())
-# -----------------------------------------------------------------------------
-# Extract round metadata for dropdown
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 3: Round end index fallback for dropdown
+# =============================================================================
 
 def extract_round_scores(data: Dict):
-    """
-    Extracts round numbers and end markers from event stream,
-    then creates GUI-friendly round index and label metadata.
-    """
     events = data.get("events", [])
     rounds = {}
     for ev in events:
@@ -109,15 +97,12 @@ def extract_round_scores(data: Dict):
                 rounds[rnd] += 1
     data["round_indices"] = sorted(rounds.keys())
     data["round_labels"]  = [f"Round {r+1}" for r in data["round_indices"]]
-# -----------------------------------------------------------------------------
-# Enrichment — Tablestakes Metadata to Prepare for GUI & Debugging
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 4: Enrichment flags for GUI
+# =============================================================================
 
 def enrich_metadata(data: Dict):
-    """
-    Adds event count and flags indicating available stat types.
-    Enables GUI modules to selectively activate views.
-    """
     events = data.get("events", [])
     data["event_count"] = len(events)
     data["has_chat"] = any(ev.get("type") == "events.ChatMessage" for ev in events)
@@ -125,9 +110,10 @@ def enrich_metadata(data: Dict):
     data["has_player_hurt"] = any(ev.get("type") == "events.PlayerHurt" for ev in events)
     data["has_weapon_fire"] = any(ev.get("type") == "events.WeaponFire" for ev in events)
     data["has_bullet_impact"] = any(ev.get("type") == "events.BulletImpact" for ev in events)
-# -----------------------------------------------------------------------------
-# Optional Debug Blocks (Guarded by Logging)
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 5: Debug logging blocks
+# =============================================================================
 
 def print_metadata(data: Dict):
     log.debug(f"▶ print_metadata: top-level keys = {list(data.keys())}")
@@ -154,15 +140,12 @@ def validate_stats(data: Dict):
                 missing.append(key)
         if missing:
             log.warning(f"⚠️ Player {sid} missing: {missing}")
-# -----------------------------------------------------------------------------
-# Main entry for GUI file loading
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 6: GUI integration fallback loader
+# =============================================================================
 
 def load_and_prepare():
-    """
-    Fallback GUI method using tkinter's file dialog.
-    Triggers full parse + sanitation + dropdown prep.
-    """
     path = filedialog.askopenfilename(
         title="Select CS2 demo or JSON file",
         filetypes=[("CS2 Files", "*.dem *.json")]
@@ -185,15 +168,12 @@ def load_and_prepare():
     validate_stats(data)
 
     return data
-# -----------------------------------------------------------------------------
-# CLI / GUI-shared loader
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# BLOCK 7: Programmatic main.py loader
+# =============================================================================
 
 def load_file(file_path: str) -> Dict:
-    """
-    Preferred loader for programmatic use via main.py.
-    Handles sanitation, dropdown fallbacks, and schema safety.
-    """
     data = load_input(file_path)
     if not data:
         log.error("❌ load_file() — could not parse input.")
@@ -207,7 +187,10 @@ def load_file(file_path: str) -> Dict:
     validate_stats(data)
 
     return data
-# 🔽 BLOCK 9 START — Schema Enrichment & Normalization via data_sanitizer
+
+# =============================================================================
+# BLOCK 8: Sanitation pipeline via data_sanitizer.enrich_and_validate
+# =============================================================================
 
 try:
     from data_sanitizer import enrich_and_validate
@@ -216,10 +199,6 @@ except ImportError:
     enrich_and_validate = None
 
 def enforce_schema_safety(data):
-    """
-    Optional enforcement of schema consistency and fallbacks using data_sanitizer.
-    This can be toggled per-match or globally.
-    """
     if enrich_and_validate:
         try:
             enriched = enrich_and_validate(data)
@@ -234,7 +213,10 @@ def enforce_schema_safety(data):
         log.debug("🔕 Schema enrichment skipped (function missing).")
     return data
 
-# 🔼 BLOCK 9 END
 # =============================================================================
-# EOF <file_loader.py v0.0025-PATCHED | Full Sanitation + Main Compatibility>
-# TLOC: 214 | pzr1H
+# BLOCK 9: Export Interface + EOF Metadata
+# =============================================================================
+
+__all__ = ["load_input", "load_file", "load_and_prepare", "extract_players_from_events", "extract_round_scores"]
+
+# Final tag for audit: TLOC = 214 | v0.0029-FIXED | ACS Loader ✅
