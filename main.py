@@ -1,54 +1,77 @@
 #!/usr/bin/env python3
 # =============================================================================
-# CS2 Ancient Chinese Secrets – Carmack Edition GUI  (Alpha v0.0004‑PATCHED)
-# Fully patched with centralized dropdown utilities
+# CS2 Ancient Chinese Secrets – Carmack Edition GUI  (Alpha v0.0004-PATCHED)
+# Fully patched with animated banner + dropdown utilities + debug logging
+# Timestamp-TOP: 2025-07-25
 # =============================================================================
 
-import logging, sys, os, io, re, threading, time
+# =============================================================================
+# Block 1: Core Imports and Setup
+# =============================================================================
+import os, sys, json, logging, threading, re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 from PIL import Image, ImageTk
 
-# Add parser folder to path & import helpers
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "cs2_parser"))
-from cs2_parser.file_loader   import load_input
-from cs2_parser.event_log     import display_events
-from cs2_parser.stats_summary import display_stats_summary
-from cs2_parser.chat_summary  import display_chat_summary
-from utils.round_utils        import to_steam2
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Add utils folder to path & import centralized dropdown parsers
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-from dropdown_utils import parse_player_dropdown
-from round_dropdown_utils import parse_round_dropdown
+# Force subfolder modules to be importable
+sys.path.insert(0, os.path.join(ROOT_DIR, "cs2_parser"))
+sys.path.insert(0, os.path.join(ROOT_DIR, "utils"))
 
-# Paths
-PCT_RE   = re.compile(r"(\d{1,3})%")
-ASSET_DIR= os.path.join(os.path.dirname(__file__), "asset")
-ICON_PATH= os.path.join(ASSET_DIR, "CS2.png")
-BANNER_GRAY= os.path.join(ASSET_DIR, "CS2-gray.png")
-BANNER_GIF= os.path.join(ASSET_DIR, "CS2-tb-fill.gif")
-BANNER_COL= os.path.join(ASSET_DIR, "CS2-col.png")
+# =============================================================================
+# Block 2: Local Imports — Modules and Utilities
+# =============================================================================
 
-logging.basicConfig(level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)s: %(message)s")
+# Core logic modules
+from file_loader               import load_file
+from cs2_parser.chat_summary   import display_chat_summary
+from cs2_parser.stats_summary  import display_stats_summary
+from cs2_parser.event_log      import display_event_log
+from cs2_parser.damage_summary import display_damage_summary
+from cs2_parser.replay_round   import init_replay_tab as replay_round
+from cs2_parser.sanitizer_report import generate_sanitizer_report
+
+# UI / Utility logic
+from utils.dropdown_utils import parse_player_dropdown
+from utils.round_dropdown_utils  import parse_round_dropdown
+from utils.cross_module_debugging import trace_log
+
+# =============================================================================
+# Block 3: Banner Asset Paths and Logging Setup
+# =============================================================================
+
+PCT_RE      = re.compile(r"(\d{1,3})%")
+ASSET_DIR   = os.path.join(ROOT_DIR, "asset")
+ICON_PATH   = os.path.join(ASSET_DIR, "CS2.png")
+BANNER_GRAY = os.path.join(ASSET_DIR, "CS2-gray.png")
+BANNER_GIF  = os.path.join(ASSET_DIR, "CS2-tb-fill.gif")
+BANNER_COL  = os.path.join(ASSET_DIR, "CS2-col.png")
+
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
+
+# =============================================================================
+# Block 2: Banner Class
+# =============================================================================
 class Banner(tk.Label):
     def __init__(self, master, gray, gif, color, w, h, delay=100, **kw):
         super().__init__(master, **kw)
-        self.gray_tk  = ImageTk.PhotoImage(Image.open(gray).resize((w,h), Image.LANCZOS))
-        self.color_tk = ImageTk.PhotoImage(Image.open(color).resize((w,h), Image.LANCZOS))
+        self.gray_tk  = ImageTk.PhotoImage(Image.open(gray).resize((w, h), Image.LANCZOS))
+        self.color_tk = ImageTk.PhotoImage(Image.open(color).resize((w, h), Image.LANCZOS))
         self.frames   = []
+
         gif_img = Image.open(gif)
         for f in range(getattr(gif_img, "n_frames", 1)):
             try:
                 gif_img.seek(f)
-                frm = gif_img.copy().convert("RGBA").resize((w,h), Image.LANCZOS)
+                frm = gif_img.copy().convert("RGBA").resize((w, h), Image.LANCZOS)
                 self.frames.append(ImageTk.PhotoImage(frm))
             except EOFError:
                 break
+
         self.config(image=self.gray_tk)
         self._delay = delay
         self._animating = False
@@ -71,16 +94,22 @@ class Banner(tk.Label):
         self._animating = False
         self.config(image=self.color_tk)
 
+# =============================================================================
+# Block 3: CS2ParserApp Class
+# =============================================================================
 class CS2ParserApp:
     def __init__(self, root):
-        root.title("CS2 ACS – Carmack Edition Alpha v0.0004‑PATCHED")
+        root.title("CS2 ACS – Carmack Edition Alpha v0.0004-PATCHED")
         root.geometry("1100x750")
         root.configure(bg="black")
+
         if os.path.isfile(ICON_PATH):
             root.iconphoto(False, tk.PhotoImage(file=ICON_PATH))
+
         self.root = root
         self.json_data = {}
         self.rounds = []
+
         self._build_ui()
         self.set_progress(0)
 
@@ -90,211 +119,165 @@ class CS2ParserApp:
         self._menu()
         self._tabs()
         self._bottom()
-        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_change)
 
     def _style(self):
         s = ttk.Style()
         s.theme_use("default")
         s.configure("TNotebook", background="black")
-        s.configure("TNotebook.Tab", background="#111", foreground="white", padding=(10,5))
-        s.map("TNotebook.Tab", background=[("selected","#333")])
+        s.configure("TNotebook.Tab", background="#111", foreground="white", padding=(10, 5))
+        s.map("TNotebook.Tab", background=[("selected", "#333")])
         s.configure("Treeview", background="black", foreground="white",
                     fieldbackground="black", rowheight=20)
 
     def _banner(self):
-        f = tk.Frame(self.root, bg="black")
-        f.pack(fill="x")
-        self.banner = Banner(f, BANNER_GRAY, BANNER_GIF, BANNER_COL, 1100, 40, delay=50, bg="black")
-        self.banner.pack(fill="x")
+        self.banner = Banner(self.root, BANNER_GRAY, BANNER_GIF, BANNER_COL, 1075, 90)
+        self.banner.pack(pady=(6, 0))
 
     def _menu(self):
-        mb = tk.Menu(self.root)
-        fm = tk.Menu(mb, tearoff=0)
-        fm.add_command(label="Open Demo/JSON", command=self._on_open)
-        em = tk.Menu(fm, tearoff=0)
-        for fmt in ("pdf","json","nav","log","pulse"):
-            em.add_command(label=f"As {fmt.upper()}", command=lambda f=fmt: self._export(f))
-        fm.add_cascade(label="Export", menu=em)
-        fm.add_separator()
-        fm.add_command(label="Exit", command=self.root.quit)
-        mb.add_cascade(label="File", menu=fm)
-        hm = tk.Menu(mb, tearoff=0)
-        hm.add_command(label="About", command=self._show_about)
-        mb.add_cascade(label="Help", menu=hm)
-        self.root.config(menu=mb)
+        menubar = tk.Menu(self.root)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Open DEM/JSON", command=self.select_file)
+        file_menu.add_command(label="Generate Sanitizer Report", command=self.trigger_sanitizer)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        menubar.add_cascade(label="File", menu=file_menu)
+        self.root.config(menu=menubar)
 
     def _tabs(self):
-        self.nb = ttk.Notebook(self.root)
-        self.tab_cons = tk.Frame(self.nb, bg="black")
-        self.tab_evt  = tk.Frame(self.nb, bg="black")
-        self.tab_stat = tk.Frame(self.nb, bg="black")
-        self.tab_chat = tk.Frame(self.nb, bg="black")
-        self.nb.add(self.tab_cons, text="Console Output")
-        self.nb.add(self.tab_evt,  text="Event Log")
-        self.nb.add(self.tab_stat, text="Advanced Stats")
-        self.nb.add(self.tab_chat,text="Chat & Summary")
-        self.nb.pack(expand=True, fill="both")
-        # create dedicated frames for stats and chat
-        self.stats_frame = tk.Frame(self.tab_stat, bg="black")
-        self.stats_frame.pack(fill="both", expand=True)
+        self.notebook = ttk.Notebook(self.root)
+        self.tabs = {}
 
-        self.chat_frame = tk.Frame(self.tab_chat, bg="black")
-        self.chat_frame.pack(fill="both", expand=True)
-        # Console widget with colored tags
-        self.txt_console = ScrolledText(self.tab_cons, bg="black", fg="white", wrap="word", font=("Consolas",10))
-        self.txt_console.tag_config("INFO", foreground="cyan")
-        self.txt_console.tag_config("DEBUG", foreground="gray")
-        self.txt_console.tag_config("WARN", foreground="yellow")
-        self.txt_console.tag_config("ERROR", foreground="red")
-        self.txt_console.pack(fill="both", expand=True)
+        for name in ["Console", "Event Log", "Advanced Stats", "Chat & Summary", "Damage Summary"]:
+            frame = ttk.Frame(self.notebook)
+            self.notebook.add(frame, text=name)
+            self.tabs[name] = frame
 
-        # Event log treeview
-        self.tree = ttk.Treeview(self.tab_evt, show="tree")
-        self.tree.pack(fill="both", expand=True)
+        self.notebook.pack(expand=1, fill="both", pady=10, padx=6)
+
+        self.console = ScrolledText(self.tabs["Console"], height=20, bg="black", fg="lime",
+                                    insertbackground="white", wrap=tk.WORD)
+        self.console.pack(expand=True, fill="both")
 
     def _bottom(self):
-        f = tk.Frame(self.root, bg="black")
-        f.pack(fill="x", side="bottom", pady=5)
-        tk.Label(f, text="Player:", fg="white", bg="black").grid(row=0, column=0, padx=5)
-        self.cb_player = ttk.Combobox(f, state="readonly", width=30)
-        self.cb_player.grid(row=0, column=1)
-        self.cb_player.bind("<<ComboboxSelected>>", self._on_selection_change)
-        tk.Label(f, text="Round:", fg="white", bg="black").grid(row=0, column=2, padx=5)
-        self.cb_round = ttk.Combobox(f, state="readonly", width=20)
-        self.cb_round.grid(row=0, column=3)
-        self.cb_round.bind("<<ComboboxSelected>>", self._on_selection_change)
-        tk.Button(f, text="Replay", command=self._replay).grid(row=0, column=4, padx=5)
-        tk.Button(f, text="Stats", command=self._gen_stats).grid(row=0, column=5, padx=5)
-        tk.Button(f, text="Debug", command=self._debug).grid(row=0, column=6, padx=5)
-        self.pb = ttk.Progressbar(f, length=200, mode="determinate")
-        self.pb.grid(row=0, column=7, padx=10)
+        bottom = tk.Frame(self.root, bg="black")
+        bottom.pack(side="bottom", fill="x", pady=(2, 5))
 
-    def _log(self, msg):
-        level = None
-        for lvl in ("ERROR","WARN","DEBUG","INFO"):
-            if msg.startswith(f"[{lvl}]"):
-                level = lvl
-                break
-        line = msg.rstrip("\n") + "\n"
-        if level:
-            self.txt_console.insert("end", line, level)
-        else:
-            self.txt_console.insert("end", line)
-        self.txt_console.see("end")
+        self.player_var = tk.StringVar()
+        self.round_var  = tk.StringVar()
 
-    def set_progress(self, val):
-        self.pb['value'] = val
+        ttk.Label(bottom, text="Player:", foreground="white", background="black").pack(side="left", padx=5)
+        self.player_menu = ttk.OptionMenu(bottom, self.player_var, "")
+        self.player_menu.pack(side="left")
 
-    def _on_open(self):
-        path = filedialog.askopenfilename(title="Select Demo/JSON",
-                                          filetypes=[("Demo .dem","*.dem"),("JSON","*.json")])
-        if not path:
+        ttk.Label(bottom, text="Round:", foreground="white", background="black").pack(side="left", padx=5)
+        self.round_menu = ttk.OptionMenu(bottom, self.round_var, "")
+        self.round_menu.pack(side="left")
+
+        ttk.Button(bottom, text="Replay Round", command=self.replay).pack(side="left", padx=8)
+        ttk.Button(bottom, text="Generate Stats", command=self.stats).pack(side="left", padx=4)
+        ttk.Button(bottom, text="Debug", command=self.debug_json).pack(side="right", padx=6)
+
+    def select_file(self):
+        file_path = filedialog.askopenfilename(title="Select Demo or JSON File",
+                    filetypes=[("Demo files", "*.dem"), ("JSON files", "*.json"), ("All files", "*.*")])
+        if not file_path:
             return
-        self.banner.start()
-        self.txt_console.delete("1.0","end")
-        self.nb.select(self.tab_cons)
-        threading.Thread(target=self._process, args=(path,), daemon=True).start()
-
-    def _process(self, path):
-        buf = io.StringIO()
-        hdl = logging.StreamHandler(buf)
-        hdl.setLevel(logging.DEBUG)
-        lg = logging.getLogger()
-        lg.addHandler(hdl)
-        start = time.time()
+        self.set_progress(10)
+        self._log(f"📂 File selected: {file_path}", "blue")
         try:
-            data = load_input(path, lambda line: self.root.after(0, lambda: self._log(line)))
+            data = load_file(file_path)
+            if not data:
+                raise ValueError("Parsed data is empty or None.")
+            self.data = data
+            self.loaded_data = data
+            self._refresh_dropdowns()
+            self._populate_tabs()
+            self._log("✅ File parsed successfully.", "green")
         except Exception as e:
-            self.root.after(0, lambda: self._log(f"[ERROR] Parser error: {e}"))
-            lg.removeHandler(hdl)
-            return
-        lg.removeHandler(hdl)
-        self.json_data = data
-        duration = time.time()-start
-        output = buf.getvalue().splitlines()
-        self.root.after(0, lambda: self._on_loaded(output, duration))
+            self._log(f"❌ Failed to parse file: {e}", "red")
+        finally:
+            self.set_progress(100)
 
-    def _on_loaded(self, output, duration):
-        self.banner.stop()
-        self.set_progress(100)
-        for ln in output:
-            self._log(ln)
-        evs = self.json_data.get("events", [])
-        self._log(f"[INFO] Parsed {len(evs)} events in {duration:.2f}s")
-        self._populate_players()
-        self._populate_rounds()
-                # Debugging display_events input types
-        self._log(f"[DEBUG] display_events input -> tree: {type(self.tree)}, events type: {type(self.json_data.get('events'))}, events count: {len(self.json_data.get('events',[]))}")
-        # Debugging display_events input
+    def _populate_tabs(self):
         try:
-            display_events(self.tree, self.json_data)
-        except Exception as ex:
-            self._log(f"[ERROR] display_events failed: {ex}")
-            import traceback; traceback_lines = traceback.format_exc().splitlines()
-            for tl in traceback_lines:
-                self._log(f"[ERROR] {tl}")
+            display_chat_summary(self.tabs["Chat & Summary"], self.data)
+            display_stats_summary(self.tabs["Advanced Stats"], self.data)
+            display_event_log(self.tabs["Event Log"], self.data)
+            display_damage_summary(self.tabs["Damage Summary"], self.data)
+        except Exception as e:
+            self._log(f"⚠️ Error populating tabs: {e}", "red")
 
-    def _populate_players(self):
-        entries = self.json_data.get("playerDropdown", [])
-        parsed = parse_player_dropdown(entries)
-        self.player_map = {f"{p['name']} ({p['steamid2']})": p['steamid64'] for p in parsed}
-        names = list(self.player_map.keys())
-        self.cb_player.config(values=names)
-        if names:
-            self.cb_player.current(0)
+    def _refresh_dropdowns(self):
+        try:
+            players = parse_player_dropdown(self.data)
+            rounds  = parse_round_dropdown(self.data)
 
-    def _populate_rounds(self):
-        events = self.json_data.get("events", [])
-        indices, labels = parse_round_dropdown(events)
-        self.rounds = indices
-        self.cb_round.config(values=labels)
-        if labels:
-            self.cb_round.current(0)
+            self.player_menu['menu'].delete(0, 'end')
+            self.round_menu['menu'].delete(0, 'end')
 
-    def _on_tab_change(self, evt):
-        sel = evt.widget.select()
-        if sel == str(self.tab_cons): self._refresh_console()
-        if sel == str(self.tab_evt): self._refresh_events()
-        if sel == str(self.tab_stat): self._refresh_stats()
-        if sel == str(self.tab_chat): self._refresh_chat()
+            for p in players:
+                self.player_menu['menu'].add_command(label=p, command=tk._setit(self.player_var, p))
+            for r in rounds:
+                self.round_menu['menu'].add_command(label=r, command=tk._setit(self.round_var, r))
 
-    def _on_selection_change(self, *_):
-        self._refresh_stats()
-        self._refresh_chat()
+            if players:
+                self.player_var.set(players[0])
+            if rounds:
+                self.round_var.set(rounds[0])
 
-    def _refresh_console(self):
-        self.txt_console.see("end")
+            self._log(f"🔄 Dropdowns refreshed — Players: {len(players)}, Rounds: {len(rounds)}", "cyan")
+        except Exception as e:
+            self._log(f"⚠️ Failed to refresh dropdowns: {e}", "red")
 
-    def _refresh_events(self):
-        self.tree.delete(*self.tree.get_children())
-        display_events(self.tree, self.json_data)
+    def _log(self, msg, color="white"):
+        trace_log("main", msg)
+        self.console.tag_config(color, foreground=color)
+        self.console.insert("end", f"{msg}\n", color)
+        self.console.see("end")
 
-    def _refresh_stats(self):
-        idx = self.cb_round.current()
-        rd = self.rounds[idx] if 0 <= idx < len(self.rounds) else None
-        display_stats_summary(self.stats_frame, self.json_data, rd)
+    def stats(self):
+        try:
+            display_stats_summary(self.tabs["Advanced Stats"], self.data)
+            self._log("📊 Stats refreshed.", "green")
+        except Exception as e:
+            self._log(f"⚠️ Failed to render stats: {e}", "red")
 
-    def _refresh_chat(self):
-        display_chat_summary(self.chat_frame, self.json_data)
+    def debug_json(self):
+        try:
+            if hasattr(self, "loaded_data"):
+                generate_sanitizer_report(self.loaded_data)
+                self._log("🩺 Sanitizer report launched.", "green")
+            else:
+                self._log("⚠️ No loaded data available for audit.", "orange")
+        except Exception as e:
+            self._log(f"❌ Error during sanitizer report: {e}", "red")
 
-    def _replay(self):
-        self._log(f"[INFO] 🔄 Replay {self.cb_player.get()} {self.cb_round.get()}")
+    def replay(self):
+        try:
+            round_selected = self.round_var.get()
+            player_selected = self.player_var.get()
+            self._log(f"▶ Replay triggered — Player: {player_selected}, Round: {round_selected}", "cyan")
+            replay_round(round_selected, player_selected, self.data)
+        except Exception as e:
+            self._log(f"❌ Replay trigger failed: {e}", "red")
 
-    def _gen_stats(self):
-        self._log(f"[INFO] 📊 Stats for {self.cb_player.get()} {self.cb_round.get()}")
+    def trigger_sanitizer(self):
+        self.debug_json()
 
-    def _debug(self):
-        self._log(f"[DEBUG] {self.json_data}")
+    def set_progress(self, value):
+        if value == 0:
+            self.banner.config(image=self.banner.gray_tk)
+        elif value < 100:
+            self.banner.start()
+        else:
+            self.banner.stop()
+        self.root.update_idletasks()
 
-    def _export(self, fmt):
-        messagebox.showinfo("Export", f"Exporting as {fmt.upper()}")
-
-    def _show_about(self):
-        messagebox.showinfo("About", "CS2 ACS GUI – Demonstration Build.")
-
+# =============================================================================
+# Launch Entry Point
+# =============================================================================
 if __name__ == "__main__":
     root = tk.Tk()
     app = CS2ParserApp(root)
     root.mainloop()
-# EOF <AR <3 updated entire main.py for improved logic and tagged logging | TLOC 286 | 2025-07-13T15:20-04:00>
-# EOF pzr1H 300 lines !investigate why stats_summary not displaying - probably need to ask claude
+#EOF — TLOC 272 — ✅ Final Canonical Patch Validated Jul 25 5:03pm ET by pzr1H

@@ -1,86 +1,77 @@
-# chat_summary.py – Display parsed chat messages with player/team context and copy support
+#!/usr/bin/env python3
+# =============================================================================
+# chat_summary.py — Chat Log Parser for CS2 ACS GUI
+# Timestamp‑TOP: 2025‑07‑25 | v1.2‑SANITIZED‑CANONICAL
+# =============================================================================
 
 import tkinter as tk
 from tkinter import ttk
-from tkinter.scrolledtext import ScrolledText
+import logging
+from utils.steam_utils import to_steam2
 
+log = logging.getLogger(__name__)
 
 def display_chat_summary(parent, data):
-    # Clear container
-    for widget in parent.winfo_children():
-        widget.destroy()
+    """
+    Populates the `parent` frame with chat messages pulled from event data.
+    Columns: Mode | Sender | Message | Tick
+    """
+    for w in parent.winfo_children():
+        w.destroy()
 
-    notebook = ttk.Notebook(parent)
-    notebook.pack(fill='both', expand=True)
+    columns = ("mode", "sender", "message", "tick")
+    tree = ttk.Treeview(parent, columns=columns, show="headings", height=20)
 
-    all_tab = ttk.Frame(notebook)
-    team_tab = ttk.Frame(notebook)
-    server_tab = ttk.Frame(notebook)
-    notebook.add(all_tab, text='All Messages')
-    notebook.add(team_tab, text='Team Chat')
-    notebook.add(server_tab, text='Server Messages')
+    for col in columns:
+        tree.heading(col, text=col.capitalize())
 
-    all_text = ScrolledText(all_tab, wrap='word')
-    all_text.pack(fill='both', expand=True)
+    tree.column("mode", width=60, anchor="center")
+    tree.column("sender", width=160, anchor="center")
+    tree.column("message", width=480, anchor="w")
+    tree.column("tick", width=80, anchor="e")
 
-    team_text = ScrolledText(team_tab, wrap='word')
-    team_text.pack(fill='both', expand=True)
+    vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
 
-    server_tree = ttk.Treeview(server_tab)
-    server_tree.pack(fill='both', expand=True)
-    server_tree['columns'] = ('tick', 'message')
-    server_tree.heading('#0', text='Category')
-    server_tree.heading('tick', text='Tick')
-    server_tree.heading('message', text='Message')
+    tree.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
 
-    events = data.get('events') or data.get('Events') or []
+    parent.grid_rowconfigure(0, weight=1)
+    parent.grid_columnconfigure(0, weight=1)
 
-    server_categories = {}
+    chat_events = [ev for ev in data.get("events", []) if ev.get("type") == "chat_message"]
+    log.debug(f"▶ display_chat_summary called, chatEvents count = {len(chat_events)}")
 
-    for ev in events:
-        if ev.get('type') == 'chat_message':
-            d = ev.get('details', {})
-            tick = ev.get('tick', '?')
-            msg = d.get('msg', '')
-            mode = d.get('mode', 'ALL')
-            sender = d.get('from', 'UNKNOWN')
+    # Build mapping from Steam2 ID to display names
+    steamid_to_name = {}
+    for ev in data.get("events", []):
+        if ev.get("type") == "events.PlayerInfo":
+            sid = ev.get("steamid") or ev.get("steamid64")
+            name = ev.get("name") or ev.get("player_name")
+            if sid and name:
+                try:
+                    steamid_to_name[to_steam2(int(sid))] = name
+                except Exception as e:
+                    log.warning(f"⚠️ SteamID parse failed for PlayerInfo: {sid} — {e}")
 
-            line = f"[{tick}] ({mode}) {sender}: {msg}\n"
-            all_text.insert(tk.END, line)
+    for ev in chat_events:
+        mode = ev.get("mode", "all").capitalize()
+        sender_id = ev.get("sender_steamid64") or ev.get("sender_steamid") or "?"
+        message = ev.get("message", "").strip()
+        tick = ev.get("tick", 0)
 
-            if mode == 'TEAM':
-                team_text.insert(tk.END, line)
+        steam2 = to_steam2(int(sender_id)) if sender_id.isdigit() else "?"
+        sender_name = steamid_to_name.get(steam2, ev.get("sender_name", "<unknown>"))
 
-            if sender.upper() == 'SERVER':
-                cat = mode or 'SERVER'
-                if cat not in server_categories:
-                    server_categories[cat] = []
-                server_categories[cat].append((tick, msg))
+        tree.insert("", "end", values=(mode, sender_name, message, tick))
 
-    for cat, msgs in server_categories.items():
-        node = server_tree.insert('', 'end', text=cat)
-        for tick, msg in msgs:
-            server_tree.insert(node, 'end', values=(tick, msg))
+    log.debug("✅ display_chat_summary complete.")
 
-    for widget in [all_text, team_text]:
-        widget.config(state='disabled')
-
-    def show_context_menu(event, widget):
-        try:
-            context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            context_menu.grab_release()
-
-    def copy_selected():
-        sel = server_tree.selection()
-        if sel:
-            row = server_tree.item(sel[0])
-            content = f"{row.get('text', '')} | {' | '.join(map(str, row.get('values', [])))}"
-            parent.clipboard_clear()
-            parent.clipboard_append(content)
-
-    context_menu = tk.Menu(parent, tearoff=0)
-    context_menu.add_command(label="Copy", command=copy_selected)
-    server_tree.bind("<Button-3>", lambda e: show_context_menu(e, server_tree))
-    all_text.bind("<Button-3>", lambda e: show_context_menu(e, all_text))
-    team_text.bind("<Button-3>", lambda e: show_context_menu(e, team_text))
+# =============================================================================
+# EOF — chat_summary.py (v1.2-SANITIZED-CANONICAL)
+# - Fully patched version w/ ID fallback and trace logging
+# - Columns: Mode | Sender | Message | Tick
+# - Vertical scrollbar added; Grid layout enforced
+# - Steam2 name mapping via PlayerInfo
+# TLOC = 77
+# =============================================================================

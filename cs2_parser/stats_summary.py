@@ -1,176 +1,169 @@
 #!/usr/bin/env python3
 # =============================================================================
-# cs2_parser/stats_summary.py – Advanced Stats Tab with Scouting Integration + Debug
-# Timestamp-TOP: 2025-07-13 20:00 EDT
+# stats_summary.py — CS2 ACS Stat Display Renderer (GUI tab: Advanced Stats)
+# Timestamp‑TOP: 2025‑07‑24 | Author: Athlenia QA + pzr1H merge
 # =============================================================================
+
+import logging
 import tkinter as tk
 from tkinter import ttk
-from round_utils import to_steam2
-import logging
+from cs2_parser.stats_builder import compute_stats as calculate_advanced_stats
 
+DEBUG = True
 log = logging.getLogger(__name__)
 
+DEFAULT_COLUMNS = [
+    "name", "kills", "deaths", "assists", "adr", "hs_percent",
+    "reaction_time", "csr", "spray_dispersion", "utility_damage"
+]
 
-def compute_cheater_likelihood(scout_data: dict) -> float:
+# 🔽 BLOCK 2 START — Unified Display Controller
+
+def display_stats_summary(parent, data, selected_round=None, selected_player=None):
     """
-    Simple heuristic: VAC ban = 1.0; otherwise based on cheating-comments and vac-friend signals.
+    Decides between advanced breakdown vs summary mode
+    based on filters. Wipes the parent frame and renders new content.
     """
-    if scout_data.get('vac_banned'):
-        return 1.0
-    score = 0.0
-    score += min(1.0, scout_data.get('cheating_comments_count', 0) * 0.1)
-    score += min(1.0, scout_data.get('friends_vac_banned', 0) * 0.02)
-    return round(score, 2)
-
-
-def display_stats_summary(parent, data, roundIndex=None):
-    """
-    Render a Treeview of basic, advanced, and scouting stats, showing player names.
-    Handles fallback and normalizes keys to STEAM_1 format.
-    """
-    log.debug(f">>> display_stats_summary called with roundIndex={roundIndex}")
-    log.debug(f">>> top-level data keys: {list(data.keys())}")
-
-    # 1) Determine stats slice
-    if roundIndex is not None and 'statsByRound' in data:
-        statsByRound = data.get('statsByRound', {})
-        log.debug(f">>> statsByRound keys: {list(statsByRound.keys())}")
-        block = statsByRound.get(roundIndex, {})
-        playerStats   = block.get('playerStats', {})   or {}
-        advancedStats = block.get('advancedStats', {}) or {}
-    else:
-        playerStats   = data.get('playerStats', {})   or {}
-        advancedStats = data.get('advancedStats', {}) or {}
-    log.debug(f">>> playerStats type=list? {isinstance(playerStats, list)}, dict? {isinstance(playerStats, dict)}")
-    log.debug(f">>> advancedStats keys (pre-normalize): {list(advancedStats.keys())}")
-
-    scoutStats = data.get('scoutStats', {}) or {}
-    log.debug(f">>> scoutStats keys: {list(scoutStats.keys())}")
-
-    # 2) Build name map from playerDropdown and scoutStats
-    name_map = {}
-    for entry in data.get('playerDropdown', []):
-        sid64 = entry.get('steamid') or entry.get('steamid64')
-        name  = entry.get('name')
-        sid64_str = str(sid64) if sid64 is not None else ''
-        if sid64_str.isdigit() and name:
-            try:
-                s2 = to_steam2(int(sid64_str))
-                name_map[s2] = name
-            except Exception:
-                log.debug(f"Failed to convert SID64 {sid64_str}")
-    for s2, s in scoutStats.items():
-        persona = s.get('persona_name')
-        if persona:
-            name_map[s2] = persona
-    log.debug(f">>> name_map entries: {name_map}")
-
-    # 3) Handle summary-fallback list of dicts
-    if isinstance(playerStats, list):
-        temp = {}
-        for row in playerStats:
-            key = row.get('Player') or row.get('player')
-            if key:
-                temp[key] = {
-                    'kills': row.get('Kills',''),
-                    'deaths': row.get('Deaths',''),
-                    'assists': row.get('Assists',''),
-                    'adr': row.get('ADR',''),
-                }
-        playerStats = temp
-        advancedStats = {}
-        log.debug(">>> normalized playerStats from list fallback")
-
-    # 4) Fallback if playerStats isn't a dict
-    if not isinstance(playerStats, dict):
-        temp_p = {}
-        temp_a = {}
-        for s2 in name_map.keys():
-            temp_p[s2] = {}
-            temp_a[s2] = {}
-        playerStats   = temp_p
-        advancedStats = temp_a
-        log.debug(">>> applied dict-fallback for missing playerStats")
-
-    # 5) Normalize keys: convert Steam64 keys to Steam2
-    norm_p = {}
-    norm_a = {}
-    for k, v in playerStats.items():
-        if isinstance(k, str) and k.isdigit():
-            try:
-                k2 = to_steam2(int(k))
-            except Exception:
-                k2 = k
-        else:
-            k2 = k
-        norm_p[k2] = v
-        norm_a[k2] = advancedStats.get(k, {})
-    playerStats   = norm_p
-    advancedStats = norm_a
-    log.debug(f">>> normalized playerStats keys: {list(playerStats.keys())}")
-    log.debug(f">>> normalized advancedStats keys: {list(advancedStats.keys())}")
-
-    # 6) Define columns
-    basic_cols = ['Player', 'Kills', 'Deaths', 'Assists', 'ADR']
-    adv_cols   = ['HS%', 'Reaction', 'CSR', 'Spray', 'Utility']
-    cols = basic_cols + adv_cols
-    if scoutStats:
-        scout_cols = [
-            'Steam Name','VAC Banned?','Community Banned?',
-            'Game Bans','Economy Ban','CS2 Hours',
-            'Vac-Fri Bans','Cheat Comments','Cheater Likelihood'
-        ]
-        cols += scout_cols
-
-    # 7) Clear previous contents
     for w in parent.winfo_children():
         w.destroy()
 
-    # 8) Setup Treeview
-    tree = ttk.Treeview(parent, columns=cols, show='headings')
-    for c in cols:
-        tree.heading(c, text=c)
-        tree.column(c, width=100, anchor='center')
+    if not data or "events" not in data:
+        log.warning("❌ No valid data or event block found in stats_summary")
+        ttk.Label(parent, text="No event data.", foreground="red").pack(pady=20)
+        return
 
-    # 9) Populate rows
-    for s2, stats in playerStats.items():
-        dn = name_map.get(s2, s2)
-        row = [
-            dn,
-            stats.get('kills',''),
-            stats.get('deaths',''),
-            stats.get('assists',''),
-            stats.get('adr',''),
-        ]
-        adv = advancedStats.get(s2, {})
-        row += [
-            f"{adv.get('hs_percent',0.0):.1f}"    if adv.get('hs_percent')   is not None else '',
-            f"{adv.get('reaction_time',0.0):.2f}" if adv.get('reaction_time') is not None else '',
-            f"{adv.get('csr',0.0):.2f}"           if adv.get('csr')           is not None else '',
-            f"{adv.get('spray_dispersion',0.0):.2f}" if adv.get('spray_dispersion') is not None else '',
-            stats.get('utility_damage',''),
-        ]
-        if scoutStats:
-            s = scoutStats.get(s2, {})
-            row += [
-                s.get('persona_name',''),
-                'Yes' if s.get('vac_banned') else 'No',
-                'Yes' if s.get('community_banned') else 'No',
-                s.get('game_bans',''),
-                s.get('economy_ban',''),
-                f"{s.get('hours_played_cs2',0.0):.2f}" if s.get('hours_played_cs2') is not None else '',
-                s.get('friends_vac_banned',''),
-                s.get('cheating_comments_count',''),
-                compute_cheater_likelihood(s),
+    if selected_player or selected_round is not None:
+        _display_advanced_stats(parent, data, selected_player, selected_round)
+    else:
+        _display_match_summary(parent, data)
+
+# 🔼 BLOCK 2 END
+# 🔼 BLOCK 2 END
+
+# 🔽 BLOCK 3 START — Defensive Stat Fallback Helpers
+
+def safe_stat(val, digits=1):
+    try:
+        return round(float(val), digits)
+    except Exception:
+        return 0.0
+
+# 🔼 BLOCK 3 END
+
+# 🔽 BLOCK 4 START — Match Summary Renderer with Safe Stats
+
+def _display_match_summary(parent, data):
+    columns = ["name", "kills", "deaths", "assists", "adr", "hs_percent", "reaction_time", "csr"]
+    headers = {
+        "name": "Player", "kills": "K", "deaths": "D", "assists": "A",
+        "adr": "ADR", "hs_percent": "HS%", "reaction_time": "RT(ms)", "csr": "CS Rating"
+    }
+
+    tree = ttk.Treeview(parent, columns=columns, show="headings", height=18)
+    for col in columns:
+        tree.heading(col, text=headers[col])
+        tree.column(col, width=90, anchor="center")
+
+    vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
+    parent.grid_rowconfigure(0, weight=1)
+    parent.grid_columnconfigure(0, weight=1)
+
+    player_stats = data.get("playerStats", {})
+    if not player_stats:
+        log.warning("⚠️ No playerStats found in data.")
+        return
+
+    for steamid, stats in player_stats.items():
+        try:
+            row = [
+                stats.get("name", steamid),
+                safe_stat(stats.get("kills")),
+                safe_stat(stats.get("deaths")),
+                safe_stat(stats.get("assists")),
+                safe_stat(stats.get("adr")),
+                safe_stat(stats.get("hs_percent")),
+                safe_stat(stats.get("reaction_time")),
+                safe_stat(stats.get("counter_strafe_rating"), 2)
             ]
-        log.debug(f">>> inserting row for {s2}: {row}")
-        tree.insert('', 'end', values=row)
+            tree.insert("", "end", values=row)
+        except Exception as e:
+            log.error(f"❌ Failed to insert row for {steamid}: {e}")
 
-    # 10) Pack Treeview
-    tree.pack(fill='both', expand=True)
-    log.debug(">>> display_stats_summary complete.")
-    return tree
+# 🔼 BLOCK 4 END
+# 🔽 BLOCK 5 START — Summary Footer Row
+    try:
+        total_kills = sum(safe_stat(p.get("kills")) for p in player_stats.values())
+        total_deaths = sum(safe_stat(p.get("deaths")) for p in player_stats.values())
+        total_assists = sum(safe_stat(p.get("assists")) for p in player_stats.values())
+        avg_adr = sum(safe_stat(p.get("adr")) for p in player_stats.values()) / max(len(player_stats), 1)
+        avg_hs = sum(safe_stat(p.get("hs_percent")) for p in player_stats.values()) / max(len(player_stats), 1)
+        avg_rt = sum(safe_stat(p.get("reaction_time")) for p in player_stats.values()) / max(len(player_stats), 1)
+        avg_csr = sum(safe_stat(p.get("counter_strafe_rating"), 2) for p in player_stats.values()) / max(len(player_stats), 1)
 
+        footer = [
+            "TEAM TOTAL/AVG",
+            total_kills, total_deaths, total_assists,
+            round(avg_adr, 1), round(avg_hs, 1),
+            round(avg_rt, 1), round(avg_csr, 2)
+        ]
+        tree.insert("", "end", values=footer)
+    except Exception as e:
+        log.warning(f"⚠️ Could not calculate footer row: {e}")
+# 🔼 BLOCK 5 END
 
-# EOF <AR <3 added verbose debug logging | TLOC ~163 | 2025-07-13T20:00-04:00>
-# EOF pzr1H 176 ln testing - 
+# 🔽 BLOCK 6 START — Advanced Stat Breakdown (selected_player / selected_round)
+
+def _display_advanced_stats(parent, data, player, round):
+    try:
+        stats = calculate_advanced_stats(data, player_filter=player, round_filter=round)
+    except Exception as e:
+        log.exception("💥 Failed to calculate_advanced_stats")
+        ttk.Label(parent, text="⚠️ Error during stat generation.", foreground="red").pack(pady=20)
+        return
+
+    if not stats:
+        ttk.Label(parent, text="No advanced stats found for selection.", foreground="gray").pack(pady=20)
+        return
+
+    columns = ["stat", "value"]
+    tree = ttk.Treeview(parent, columns=columns, show="headings", height=20)
+    tree.heading("stat", text="Metric")
+    tree.heading("value", text="Value")
+    tree.column("stat", width=260, anchor=tk.W)
+    tree.column("value", width=120, anchor=tk.CENTER)
+
+    for key, val in stats.items():
+        val_str = f"{val:.3f}" if isinstance(val, float) else str(val)
+        tree.insert("", tk.END, values=(key, val_str))
+
+    vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb.set)
+    tree.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
+    parent.grid_rowconfigure(0, weight=1)
+    parent.grid_columnconfigure(0, weight=1)
+
+    label = ttk.Label(
+        parent,
+        text=f"Stats for {player or 'ALL'} - Round {round if round is not None else 'ALL'}",
+        font=("Segoe UI", 10, "italic")
+    )
+    label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
+    log.debug(f"✅ Advanced stats displayed for {player}/{round}")
+# 🔼 BLOCK 6 END
+# 🔽 BLOCK 7 START — Footer & EOF
+
+# =============================================================================
+# EOF — stats_summary.py (Unified Advanced & Summary Stats Module)
+# Timestamp‑END: 2025‑07‑24 | TLOC: 156
+# Notes:
+# - Safely displays per-match summary or per-round/player breakdown
+# - Uses calculate_advanced_stats for contextual analysis
+# - Treeview, scrollbar, and fallback-safe rendering included
+# =============================================================================
+
+# 🔼 BLOCK 7 END
+#EOF pzr1h 169
