@@ -107,7 +107,8 @@ def clear_future_log():
 # =============================================================================
 # BLOCK 5 — Exports
 # =============================================================================
-
+# 🔄 Decorator alias for legacy modules using @trace_log
+trace_log = trace
 __all__ = [
     "get_logger",
     "trace",

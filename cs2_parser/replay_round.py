@@ -127,6 +127,6 @@ def export_navmesh_script(data: dict, round_num, player_id):
         log.error(f"❌ Failed to export navmesh: {e}")
 
 # =============================================================================
-# EOF — replay_round.py (Replay + Navmesh Stub v0.3)
-# TLOC: ~120 | Status: ✅ Modular GUI-ready, placeholder logic scaffolded
+# replay_round.py — Replay & Navmesh Generator (v0.3-AUDITED)
+# TLOC: 127 | ✅ Clean audit complete | Future: overlay + navmesh export logic
 # =============================================================================

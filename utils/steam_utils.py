@@ -10,35 +10,40 @@ from typing import Union, Set
 
 log = logging.getLogger(__name__)
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Constants
-# -------------------------------------------------------------------------
+# =============================================================================
 
 STEAM64_BASE = 76561197960265728
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Steam64 Pre-Normalizer — Handles hex, 0x prefix, or decimal
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def strip_steamid64(raw: Union[str, int]) -> int:
-    """
-    Normalizes raw SteamID64 input from hex, 0x-prefixed, or decimal string.
-    """
     try:
         if isinstance(raw, int):
             return raw
-        clean = str(raw).strip().lower()
+
+        # Defensive guard: filter out field keys or non-ID strings early
+        if not raw or not isinstance(raw, str):
+            return -1
+
+        clean = raw.strip().lower()
+        if any(forbidden in clean for forbidden in ['name', 'team', 'score', 'player']):
+            return -1
+
         if clean.startswith("0x"):
             clean = clean[2:]
-        clean = re.sub(r'[^0-9a-f]', '', clean)
+        clean = re.sub(r"[^0-9a-f]", "", clean)
         return int(clean, 16)
     except Exception as e:
-        log.warning(f"strip_steamid64 failed: {raw} → {e}")
+        log.warning(f"⚠️ strip_steamid64 failed: raw={raw} → {e}")
         return -1
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Conversions: SteamID64 → Steam2
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def steamid64_to_steam2(sid64: Union[str, int]) -> str:
     """
@@ -55,9 +60,9 @@ def steamid64_to_steam2(sid64: Union[str, int]) -> str:
         log.warning(f"steamid64_to_steam2 failed: {e}")
         return "STEAM_UNKNOWN"
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Conversions: SteamID3 → Steam2
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def steamid3_to_steam2(sid3: str) -> str:
     """
@@ -72,9 +77,9 @@ def steamid3_to_steam2(sid3: str) -> str:
         log.warning(f"steamid3_to_steam2 failed: {e}")
     return "STEAM_UNKNOWN"
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Conversions: Steam2 → Steam64
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def steamid2_to_steam64(steam2: str) -> int:
     """
@@ -90,9 +95,9 @@ def steamid2_to_steam64(steam2: str) -> int:
         log.warning(f"steamid2_to_steam64 failed: {e}")
     return -1
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Conversions: Steam2 → Steam3
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def steamid2_to_steam3(steam2: str) -> str:
     """
@@ -109,9 +114,9 @@ def steamid2_to_steam3(steam2: str) -> str:
         log.warning(f"steamid2_to_steam3 failed: {e}")
     return "STEAM_UNKNOWN"
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Normalize: Attempts to convert any SteamID type to Steam2 format
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def normalize_steam_id(raw_id: Union[str, int]) -> str:
     """
@@ -121,19 +126,25 @@ def normalize_steam_id(raw_id: Union[str, int]) -> str:
         return "STEAM_UNKNOWN"
 
     try:
-        if isinstance(raw_id, int) or str(raw_id).isdigit() or str(raw_id).lower().startswith("0x"):
+        raw_str = str(raw_id).strip().lower()
+
+        if any(sub in raw_str for sub in ("name", "team", "score")):
+            # Block invalid keys like 'name' or 'team1'
+            return "STEAM_UNKNOWN"
+
+        if isinstance(raw_id, int) or raw_str.isdigit() or raw_str.startswith("0x"):
             return steamid64_to_steam2(raw_id)
-        elif str(raw_id).startswith("[U:1:"):
-            return steamid3_to_steam2(str(raw_id))
-        elif str(raw_id).startswith("STEAM_"):
-            return str(raw_id)
+        elif raw_str.startswith("[u:1:"):
+            return steamid3_to_steam2(raw_str)
+        elif raw_str.startswith("steam_"):
+            return raw_str
     except Exception as e:
         log.warning(f"normalize_steam_id failed: {e}")
     return "STEAM_UNKNOWN"
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Extract all Steam IDs from JSON-formatted demo data
-# -------------------------------------------------------------------------
+# =============================================================================
 
 def extract_steam_ids_from_data(data: dict) -> Set[str]:
     """
@@ -143,20 +154,19 @@ def extract_steam_ids_from_data(data: dict) -> Set[str]:
     steam_ids = set()
     events = data.get("events", [])
     for ev in events:
-        for key in ev:
-            if "steamid" in key:
-                val = ev[key]
+        for key, val in ev.items():
+            if key.lower() in ("steamid", "steam_id", "xuid", "accountid"):  # Safer matching
                 steam2 = normalize_steam_id(val)
                 if steam2 and steam2.startswith("STEAM_"):
                     steam_ids.add(steam2)
     return steam_ids
 
-# -------------------------------------------------------------------------
+# =============================================================================
 # Compatibility Aliases
-# -------------------------------------------------------------------------
+# =============================================================================
 
-to_steam2 = steamid64_to_steam2
-parse_sid64 = steamid64_to_steam2
+to_steam2     = steamid64_to_steam2
+parse_sid64   = steamid64_to_steam2
 normalize_sid = normalize_steam_id
 
 # =============================================================================

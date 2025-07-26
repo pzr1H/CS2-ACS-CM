@@ -1,0 +1,83 @@
+2025-07-26 14:47:04 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-1-76abd3a1-f140-4e8b-81b8-b795d89e6f97-1-1.dem.json
+2025-07-26 14:47:04 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 14:47:04 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 14:47:04 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 14:47:04 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 14:47:04 | ERROR    | cross_module_debugging | 💥 ERROR in utils.dropdown_utils._extract_unique_players: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 75, in _extract_unique_players
+    if event.get("type") != "player_hurt":
+       ^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-07-26 14:47:04 | ERROR    | cross_module_debugging | 💥 ERROR in utils.dropdown_utils.build_player_dropdown: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 112, in build_player_dropdown
+    player_metadata = _extract_unique_players(event_data)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 75, in _extract_unique_players
+    if event.get("type") != "player_hurt":
+       ^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-07-26 14:47:05 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 14:47:05 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 14:47:08 | ERROR    | cross_module_debugging | 💥 ERROR in utils.dropdown_utils._extract_unique_players: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 75, in _extract_unique_players
+    if event.get("type") != "player_hurt":
+       ^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-07-26 14:47:08 | ERROR    | cross_module_debugging | 💥 ERROR in utils.dropdown_utils.build_player_dropdown: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 112, in build_player_dropdown
+    player_metadata = _extract_unique_players(event_data)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\cross_module_debugging.py", line 59, in wrapper
+    result = func(*args, **kwargs)
+  File "c:\Users\jerry\Downloads\CS2-ACS-CM\utils\dropdown_utils.py", line 75, in _extract_unique_players
+    if event.get("type") != "player_hurt":
+       ^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-07-26 14:54:17 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 15:35:59 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-1-ca2ad395-97b2-423b-9dc7-cbd264b8ff27-1-1.dem.json
+2025-07-26 15:35:59 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 15:36:00 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 15:36:00 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 15:36:00 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 15:36:00 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 15:36:00 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 15:37:57 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-1-dfdafa1c-64e3-4c29-b320-5cf1fa66400d-1-1.dem.json
+2025-07-26 15:37:57 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 15:37:57 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 15:37:57 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 15:37:57 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 15:37:58 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 15:37:58 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 15:39:40 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-003758360140089131248_0844089304.dem.json
+2025-07-26 15:39:40 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 15:39:40 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 15:39:40 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 15:39:40 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 15:39:40 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 15:39:40 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 15:42:33 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-1-ca2ad395-97b2-423b-9dc7-cbd264b8ff27-1-1.dem.json
+2025-07-26 15:42:33 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 15:42:34 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 15:42:34 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 15:42:34 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 15:42:34 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 15:42:34 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
+2025-07-26 15:47:07 | WARNING  | root | ⚠️ Falling back to latest summary JSON: ./pewpew\summary-1-76abd3a1-f140-4e8b-81b8-b795d89e6f97-1-1.dem.json
+2025-07-26 15:47:07 | WARNING  | utils.data_sanitizer | 🛑 Missing or malformed metadata block. Injecting defaults.
+2025-07-26 15:47:08 | WARNING  | root | ⚠️ No playerStats after fallback.
+2025-07-26 15:47:08 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'chat' key. Injecting empty list.
+2025-07-26 15:47:08 | WARNING  | utils.data_sanitizer | ⚠️ Missing or invalid 'playerStats' key. Injecting empty dict.
+2025-07-26 15:47:08 | WARNING  | cs2_parser.chat_summary | 📭 No chat messages found
+2025-07-26 15:47:08 | WARNING  | cs2_parser.stats_summary | ⚠️ No playerStats found in data.
