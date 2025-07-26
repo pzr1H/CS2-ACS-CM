@@ -45,7 +45,13 @@ def event_log_tab_controller(parent: tk.Frame, data: dict, banner=None) -> None:
     ttk.Label(top_frame, text="Filter by Event Type:").pack(side="left", padx=(10, 5))
     filter_dropdown = ttk.OptionMenu(top_frame, selected_type, "All", *event_types)
     filter_dropdown.pack(side="left")
-
+    # Expose filtered PlayerInfo events for external use
+    playerinfo_events = [ev for ev in data.get('events', []) if ev.get('Type', '').lower() == 'events.playerinfo']
+    roundend_events = [ev for ev in data.get('events', []) if ev.get('Type', '').lower() == 'events.roundendofficial']
+    
+    # Save filtered events on parent_tab for main GUI to access
+    parent_tab.filtered_playerinfo_events = playerinfo_events
+    parent_tab.filtered_roundend_events = roundend_events
     tree = ttk.Treeview(parent)
     tree.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
     parent.grid_rowconfigure(1, weight=1)
