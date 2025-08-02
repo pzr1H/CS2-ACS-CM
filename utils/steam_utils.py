@@ -1,178 +1,391 @@
 #!/usr/bin/env python3
 # =============================================================================
-# steam_utils.py – SteamID Conversion Utilities for CS2 ACS
-# Timestamp‑TOP: 2025‑07‑25 | v1.1-NORMALIZER
+# utils/steam_utils.py — Steam ID Conversion and Utilities
+# Handles conversion between SteamID formats for CS2 ACS
 # =============================================================================
 
 import re
-import logging
-from typing import Union, Set
+from typing import Union, Optional
 
-log = logging.getLogger(__name__)
-
-# =============================================================================
-# Constants
-# =============================================================================
-
-STEAM64_BASE = 76561197960265728
-
-# =============================================================================
-# Steam64 Pre-Normalizer — Handles hex, 0x prefix, or decimal
-# =============================================================================
-
-def strip_steamid64(raw: Union[str, int]) -> int:
-    try:
-        if isinstance(raw, int):
-            return raw
-
-        # Defensive guard: filter out field keys or non-ID strings early
-        if not raw or not isinstance(raw, str):
-            return -1
-
-        clean = raw.strip().lower()
-        if any(forbidden in clean for forbidden in ['name', 'team', 'score', 'player']):
-            return -1
-
-        if clean.startswith("0x"):
-            clean = clean[2:]
-        clean = re.sub(r"[^0-9a-f]", "", clean)
-        return int(clean, 16)
-    except Exception as e:
-        log.warning(f"⚠️ strip_steamid64 failed: raw={raw} → {e}")
-        return -1
-
-# =============================================================================
-# Conversions: SteamID64 → Steam2
-# =============================================================================
-
-def steamid64_to_steam2(sid64: Union[str, int]) -> str:
+def to_steam2(steamid: Union[int, str]) -> str:
     """
-    Converts 64-bit SteamID to Steam2 format (STEAM_1:X:Y).
+    Convert SteamID64 to Steam2 format (STEAM_1:X:Y)
+    
+    Args:
+        steamid: SteamID64 as integer or string
+        
+    Returns:
+        Steam2 format string (STEAM_1:X:Y)
     """
     try:
-        sid64 = strip_steamid64(sid64)
-        if sid64 == -1:
-            return "STEAM_UNKNOWN"
-        y = sid64 % 2
-        z = (sid64 - STEAM64_BASE - y) // 2
-        return f"STEAM_1:{y}:{z}"
-    except Exception as e:
-        log.warning(f"steamid64_to_steam2 failed: {e}")
-        return "STEAM_UNKNOWN"
+        # Convert to integer if string
+        if isinstance(steamid, str):
+            steamid = int(steamid)
+        
+        # Validate range for SteamID64
+        if steamid < 76561197960265728:  # Base SteamID64 value
+            return "STEAM_0:0:0"
+        
+        # Calculate Steam2 components
+        # SteamID64 = 76561197960265728 + (AccountID * 2) + AuthServer
+        account_number = steamid - 76561197960265728
+        auth_server = account_number % 2
+        account_id = account_number // 2
+        
+        return f"STEAM_1:{auth_server}:{account_id}"
+        
+    except (ValueError, TypeError):
+        return "STEAM_0:0:0"
 
-# =============================================================================
-# Conversions: SteamID3 → Steam2
-# =============================================================================
-
-def steamid3_to_steam2(sid3: str) -> str:
+def to_steam3(steamid: Union[int, str]) -> str:
     """
-    Converts SteamID3 format to Steam2 (e.g. '[U:1:12345678]' → 'STEAM_1:0:6172839')
-    """
-    try:
-        match = re.match(r'\[U:1:(\d+)\]', sid3)
-        if match:
-            uid = int(match.group(1))
-            return f"STEAM_1:{uid % 2}:{uid // 2}"
-    except Exception as e:
-        log.warning(f"steamid3_to_steam2 failed: {e}")
-    return "STEAM_UNKNOWN"
-
-# =============================================================================
-# Conversions: Steam2 → Steam64
-# =============================================================================
-
-def steamid2_to_steam64(steam2: str) -> int:
-    """
-    Converts Steam2 format (STEAM_1:X:Y) to 64-bit SteamID.
+    Convert SteamID64 to Steam3 format ([U:1:XXXXXX])
+    
+    Args:
+        steamid: SteamID64 as integer or string
+        
+    Returns:
+        Steam3 format string ([U:1:XXXXXX])
     """
     try:
-        parts = steam2.strip().split(':')
-        if len(parts) == 3:
-            y = int(parts[1])
-            z = int(parts[2])
-            return STEAM64_BASE + z * 2 + y
-    except Exception as e:
-        log.warning(f"steamid2_to_steam64 failed: {e}")
-    return -1
+        if isinstance(steamid, str):
+            steamid = int(steamid)
+        
+        if steamid < 76561197960265728:
+            return "[U:1:0]"
+        
+        account_id = steamid - 76561197960265728
+        return f"[U:1:{account_id}]"
+        
+    except (ValueError, TypeError):
+        return "[U:1:0]"
 
-# =============================================================================
-# Conversions: Steam2 → Steam3
-# =============================================================================
-
-def steamid2_to_steam3(steam2: str) -> str:
+def steam2_to_steam64(steam2: str) -> Optional[int]:
     """
-    Converts Steam2 format to Steam3 (e.g. 'STEAM_1:X:Y' → '[U:1:Z]')
+    Convert Steam2 format to SteamID64
+    
+    Args:
+        steam2: Steam2 format string (STEAM_X:Y:Z)
+        
+    Returns:
+        SteamID64 as integer or None if invalid
     """
     try:
-        parts = steam2.strip().split(':')
-        if len(parts) == 3:
-            x = int(parts[1])
-            y = int(parts[2])
-            uid = y * 2 + x
-            return f"[U:1:{uid}]"
-    except Exception as e:
-        log.warning(f"steamid2_to_steam3 failed: {e}")
-    return "STEAM_UNKNOWN"
+        # Match STEAM_X:Y:Z format
+        match = re.match(r"STEAM_([0-5]):([01]):(\d+)", steam2)
+        if not match:
+            return None
+        
+        universe, auth_server, account_id = match.groups()
+        auth_server = int(auth_server)
+        account_id = int(account_id)
+        
+        # Calculate SteamID64
+        steamid64 = 76561197960265728 + (account_id * 2) + auth_server
+        return steamid64
+        
+    except (ValueError, TypeError):
+        return None
 
-# =============================================================================
-# Normalize: Attempts to convert any SteamID type to Steam2 format
-# =============================================================================
-
-def normalize_steam_id(raw_id: Union[str, int]) -> str:
+def steam3_to_steam64(steam3: str) -> Optional[int]:
     """
-    Normalizes various SteamID formats to Steam2 (STEAM_1:X:Y)
+    Convert Steam3 format to SteamID64
+    
+    Args:
+        steam3: Steam3 format string ([U:1:XXXXXX])
+        
+    Returns:
+        SteamID64 as integer or None if invalid
     """
-    if not raw_id:
-        return "STEAM_UNKNOWN"
-
     try:
-        raw_str = str(raw_id).strip().lower()
+        # Match [U:1:XXXXXX] format
+        match = re.match(r"\[U:1:(\d+)\]", steam3)
+        if not match:
+            return None
+        
+        account_id = int(match.group(1))
+        steamid64 = 76561197960265728 + account_id
+        return steamid64
+        
+    except (ValueError, TypeError):
+        return None
 
-        if any(sub in raw_str for sub in ("name", "team", "score")):
-            # Block invalid keys like 'name' or 'team1'
-            return "STEAM_UNKNOWN"
-
-        if isinstance(raw_id, int) or raw_str.isdigit() or raw_str.startswith("0x"):
-            return steamid64_to_steam2(raw_id)
-        elif raw_str.startswith("[u:1:"):
-            return steamid3_to_steam2(raw_str)
-        elif raw_str.startswith("steam_"):
-            return raw_str
-    except Exception as e:
-        log.warning(f"normalize_steam_id failed: {e}")
-    return "STEAM_UNKNOWN"
-
-# =============================================================================
-# Extract all Steam IDs from JSON-formatted demo data
-# =============================================================================
-
-def extract_steam_ids_from_data(data: dict) -> Set[str]:
+def validate_steamid64(steamid: Union[int, str]) -> bool:
     """
-    Traverses parsed demo JSON data to extract all unique SteamIDs,
-    normalizing them to Steam2 format.
+    Validate if a SteamID64 is in the correct format and range
+    
+    Args:
+        steamid: SteamID64 to validate
+        
+    Returns:
+        True if valid, False otherwise
     """
-    steam_ids = set()
-    events = data.get("events", [])
-    for ev in events:
-        for key, val in ev.items():
-            if key.lower() in ("steamid", "steam_id", "xuid", "accountid"):  # Safer matching
-                steam2 = normalize_steam_id(val)
-                if steam2 and steam2.startswith("STEAM_"):
-                    steam_ids.add(steam2)
-    return steam_ids
+    try:
+        if isinstance(steamid, str):
+            if not steamid.isdigit():
+                return False
+            steamid = int(steamid)
+        
+        # Check if it's in the valid SteamID64 range
+        # Minimum value: 76561197960265728 (STEAM_1:0:0)
+        # Maximum reasonable value: ~76561202255233023 (allowing for ~4 billion accounts)
+        return 76561197960265728 <= steamid <= 76561202255233023
+        
+    except (ValueError, TypeError):
+        return False
 
-# =============================================================================
-# Compatibility Aliases
-# =============================================================================
+def validate_steam2(steam2: str) -> bool:
+    """
+    Validate Steam2 format
+    
+    Args:
+        steam2: Steam2 string to validate
+        
+    Returns:
+        True if valid format, False otherwise
+    """
+    try:
+        if not isinstance(steam2, str):
+            return False
+        
+        # Check STEAM_X:Y:Z format where X=0-5, Y=0-1, Z is positive integer
+        pattern = r"^STEAM_[0-5]:[01]:\d+$"
+        return bool(re.match(pattern, steam2))
+        
+    except:
+        return False
 
-to_steam2     = steamid64_to_steam2
-parse_sid64   = steamid64_to_steam2
-normalize_sid = normalize_steam_id
+def normalize_steamid(steamid: Union[int, str]) -> dict:
+    """
+    Convert a SteamID to all common formats
+    
+    Args:
+        steamid: SteamID in any format (SteamID64, Steam2, Steam3)
+        
+    Returns:
+        Dictionary with all formats or None values if invalid
+    """
+    try:
+        result = {
+            "steamid64": None,
+            "steam2": None,
+            "steam3": None,
+            "valid": False
+        }
+        
+        steamid_str = str(steamid)
+        
+        # Try to determine input format and convert
+        if steamid_str.isdigit():
+            # Assume SteamID64
+            steamid64 = int(steamid_str)
+            if validate_steamid64(steamid64):
+                result["steamid64"] = steamid64
+                result["steam2"] = to_steam2(steamid64)
+                result["steam3"] = to_steam3(steamid64)
+                result["valid"] = True
+                
+        elif steamid_str.startswith("STEAM_"):
+            # Steam2 format
+            if validate_steam2(steamid_str):
+                steamid64 = steam2_to_steam64(steamid_str)
+                if steamid64:
+                    result["steamid64"] = steamid64
+                    result["steam2"] = steamid_str
+                    result["steam3"] = to_steam3(steamid64)
+                    result["valid"] = True
+                    
+        elif steamid_str.startswith("[U:1:"):
+            # Steam3 format
+            steamid64 = steam3_to_steam64(steamid_str)
+            if steamid64:
+                result["steamid64"] = steamid64
+                result["steam2"] = to_steam2(steamid64)
+                result["steam3"] = steamid_str
+                result["valid"] = True
+        
+        return result
+        
+    except:
+        return {
+            "steamid64": None,
+            "steam2": None, 
+            "steam3": None,
+            "valid": False
+        }
 
-# =============================================================================
-# EOF — steam_utils.py (v1.1-NORMALIZER)
-# - Steam64 pre-stripper handles hex, 0x, raw input
-# - Steam2/3/64 converters with logging
-# - extract_steam_ids_from_data() supports all key variants
-# - All output is Steam2-normalized
-# =============================================================================
+def extract_steamids_from_text(text: str) -> list:
+    """
+    Extract all valid SteamIDs from a text string
+    
+    Args:
+        text: Text to search for SteamIDs
+        
+    Returns:
+        List of dictionaries with found SteamIDs in all formats
+    """
+    try:
+        found_ids = []
+        
+        # Look for SteamID64 (17-digit numbers starting with 765)
+        steamid64_pattern = r'\b765\d{14}\b'
+        for match in re.finditer(steamid64_pattern, text):
+            steamid64 = int(match.group())
+            if validate_steamid64(steamid64):
+                normalized = normalize_steamid(steamid64)
+                if normalized["valid"]:
+                    found_ids.append(normalized)
+        
+        # Look for Steam2 format
+        steam2_pattern = r'\bSTEAM_[0-5]:[01]:\d+\b'
+        for match in re.finditer(steam2_pattern, text):
+            steam2 = match.group()
+            normalized = normalize_steamid(steam2)
+            if normalized["valid"]:
+                found_ids.append(normalized)
+        
+        # Look for Steam3 format
+        steam3_pattern = r'\[U:1:\d+\]'
+        for match in re.finditer(steam3_pattern, text):
+            steam3 = match.group()
+            normalized = normalize_steamid(steam3)
+            if normalized["valid"]:
+                found_ids.append(normalized)
+        
+        # Remove duplicates based on steamid64
+        unique_ids = []
+        seen_steamids = set()
+        for steamid_data in found_ids:
+            steamid64 = steamid_data["steamid64"]
+            if steamid64 not in seen_steamids:
+                seen_steamids.add(steamid64)
+                unique_ids.append(steamid_data)
+        
+        return unique_ids
+        
+    except:
+        return []
+
+def get_account_age_estimate(steamid: Union[int, str]) -> str:
+    """
+    Estimate account creation period based on SteamID64
+    
+    Args:
+        steamid: SteamID64 to analyze
+        
+    Returns:
+        Estimated time period string
+    """
+    try:
+        if isinstance(steamid, str):
+            steamid = int(steamid)
+        
+        if not validate_steamid64(steamid):
+            return "Invalid SteamID"
+        
+        account_number = steamid - 76561197960265728
+        
+        # Very rough estimates based on Steam account creation patterns
+        if account_number < 10000000:  # ~10M
+            return "2003-2007 (Very Old)"
+        elif account_number < 50000000:  # ~50M
+            return "2007-2012 (Old)"
+        elif account_number < 150000000:  # ~150M
+            return "2012-2017 (Established)"
+        elif account_number < 300000000:  # ~300M
+            return "2017-2020 (Recent)"
+        else:
+            return "2020+ (New)"
+            
+    except:
+        return "Unknown"
+
+def is_likely_alt_account(steamid: Union[int, str], hours_threshold: int = 100) -> dict:
+    """
+    Analyze if account characteristics suggest it might be an alt/smurf
+    
+    Args:
+        steamid: SteamID64 to analyze
+        hours_threshold: Hour threshold for new account consideration
+        
+    Returns:
+        Dictionary with analysis results
+    """
+    try:
+        age_estimate = get_account_age_estimate(steamid)
+        
+        # This is a basic heuristic - would need additional data for accuracy
+        result = {
+            "account_age_estimate": age_estimate,
+            "likely_alt": False,
+            "confidence": "Low",
+            "reasons": []
+        }
+        
+        if "New" in age_estimate or "Recent" in age_estimate:
+            result["reasons"].append("Relatively new account")
+            result["likely_alt"] = True
+            result["confidence"] = "Medium"
+        
+        # Additional checks would require game hours, friend count, etc.
+        # which aren't available just from SteamID
+        
+        return result
+        
+    except:
+        return {
+            "account_age_estimate": "Unknown",
+            "likely_alt": False,
+            "confidence": "None",
+            "reasons": ["Analysis failed"]
+        }
+
+# Utility functions for common operations
+def format_steamid_for_display(steamid: Union[int, str], format_type: str = "steam2") -> str:
+    """
+    Format SteamID for display purposes
+    
+    Args:
+        steamid: SteamID in any format
+        format_type: Desired output format ("steam2", "steam3", "steamid64")
+        
+    Returns:
+        Formatted SteamID string
+    """
+    try:
+        normalized = normalize_steamid(steamid)
+        if not normalized["valid"]:
+            return "Invalid SteamID"
+        
+        if format_type.lower() == "steam2":
+            return normalized["steam2"]
+        elif format_type.lower() == "steam3":
+            return normalized["steam3"]
+        elif format_type.lower() == "steamid64":
+            return str(normalized["steamid64"])
+        else:
+            return normalized["steam2"]  # Default to Steam2
+            
+    except:
+        return "Error"
+
+# Batch processing utilities
+def process_steamid_list(steamids: list) -> list:
+    """
+    Process a list of SteamIDs and normalize them
+    
+    Args:
+        steamids: List of SteamIDs in various formats
+        
+    Returns:
+        List of normalized SteamID dictionaries
+    """
+    try:
+        results = []
+        for steamid in steamids:
+            normalized = normalize_steamid(steamid)
+            if normalized["valid"]:
+                results.append(normalized)
+        return results
+    except:
+        return []

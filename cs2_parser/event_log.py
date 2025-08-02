@@ -1,240 +1,204 @@
 #!/usr/bin/env python3
 # =============================================================================
-# event_log.py — CS2 ACS Event Log Renderer with Filtering + Export + Banner Injection
-# Timestamp: 2025‑07‑26 | Author: Athlenia QA + pzr1H | PATCHED v2.3-R3
+# event_log.py — GUI Event Log Display with Filter/Export
+# BLOCK 1: Imports, Logger, Constants
 # =============================================================================
 
 import logging
-log = logging.getLogger(__name__)
 import tkinter as tk
-from tkinter import ttk
-
-# =============================================================================
-# Block 0: Logging + Trace Setup
-# =============================================================================
-try:
-    from cross_module_debugging import trace_log
-except ImportError:
-    def trace_log(func):
-        return func
+from tkinter import ttk, filedialog, messagebox
+from typing import List, Dict, Any, Optional
 
 log = logging.getLogger(__name__)
-log.info("📋 Event Log module initialized")  # ✅ Replaced invalid trace_log()
+
+EVENT_COLUMNS = [
+    "tick", "name", "player", "target", "weapon", "site", "hp", "x", "y", "z", "round"
+]
+
+COLUMN_ALIASES = {
+    "tick": "Tick",
+    "name": "Event",
+    "player": "Player",
+    "target": "Target",
+    "weapon": "Weapon",
+    "site": "Site",
+    "hp": "HP",
+    "x": "X",
+    "y": "Y",
+    "z": "Z",
+    "round": "Round"
+}
+
 
 # =============================================================================
-# Block 1: Controller — Full Tab Layout with Dropdown and Export
+# BLOCK 2: Treeview Construction and Tab Initialization
 # =============================================================================
 
-def event_log_tab_controller(parent: tk.Frame, data: dict, banner=None) -> None:
+def create_event_log_tab(parent_tab: ttk.Notebook, events: List[Dict[str, Any]]):
     """
-    Creates the event log tab UI, including filter dropdown, Treeview, and export buttons.
-    Accepts optional banner for fallback dropdown injection.
+    Constructs the Event Log tab in the GUI.
+
+    Args:
+        parent_tab: Parent tab container (Notebook)
+        events: List of parsed CS2 game events
     """
-    for widget in parent.winfo_children():
-        widget.destroy()
+    log.info("📜 Building Event Log tab...")
 
-    all_events = data.get("events", [])
-    event_types = sorted(set(ev.get("type", "Unknown") for ev in all_events))
-    event_types.insert(0, "All")  # Add 'All' option
+    frame = ttk.Frame(parent_tab)
+    parent_tab.add(frame, text="📜 Event Log")
 
-    top_frame = ttk.Frame(parent)
-    top_frame.grid(row=0, column=0, sticky="ew", pady=5)
-    parent.grid_columnconfigure(0, weight=1)
+    # Main Treeview
+    tree = ttk.Treeview(frame, columns=EVENT_COLUMNS, show="headings", height=25)
+    scroll_y = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scroll_y.set)
 
-    selected_type = tk.StringVar(value="All")
-    ttk.Label(top_frame, text="Filter by Event Type:").pack(side="left", padx=(10, 5))
-    filter_dropdown = ttk.OptionMenu(top_frame, selected_type, "All", *event_types)
-    filter_dropdown.pack(side="left")
-    # Expose filtered PlayerInfo events for external use
-    playerinfo_events = [ev for ev in data.get('events', []) if ev.get('Type', '').lower() == 'events.playerinfo']
-    roundend_events = [ev for ev in data.get('events', []) if ev.get('Type', '').lower() == 'events.roundendofficial']
-    
-    # Save filtered events on parent_tab for main GUI to access
-    parent_tab.filtered_playerinfo_events = playerinfo_events
-    parent_tab.filtered_roundend_events = roundend_events
-    tree = ttk.Treeview(parent)
-    tree.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-    parent.grid_rowconfigure(1, weight=1)
-
-    vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
-    vsb.grid(row=1, column=1, sticky="ns")
-    tree.configure(yscrollcommand=vsb.set)
-
-    def refresh_tree(*args):
-        selected = selected_type.get()
-        filtered = [ev for ev in all_events if selected == "All" or ev.get("type") == selected]
-        _render_event_tree(tree, filtered)
-
-    selected_type.trace_add("write", refresh_tree)
-
-    _render_event_tree(tree, all_events)
-
-    # Inject player/round capture from TreeView
-    try:
-        from utils.dropdown_utils import parse_player_dropdown
-        players = extract_players_from_event_tree(tree)
-        rounds = extract_rounds_from_event_tree(tree)
-        if banner and hasattr(banner, "capture_event_players"):
-            banner.capture_event_players(parse_player_dropdown(players), rounds)
-        else:
-            log.debug("⚠️ No banner object passed to controller. Skipping capture.")
-    except Exception as e:
-        log.warning(f"⚠️ Failed to capture dropdown data from TreeView: {e}")
-
-    # Export controls
-    export_frame = ttk.Frame(parent)
-    export_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=5)
-    export_frame.grid_columnconfigure(0, weight=1)
-
-    def export_csv():
-        from tkinter import filedialog
-        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[["CSV Files", "*.csv"]])
-        if not path:
-            return
-        try:
-            import csv
-            with open(path, "w", newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(["Tick", "Round", "Type", "Name", "Detail"])
-                for row in tree.get_children():
-                    writer.writerow(tree.item(row)["values"])
-            log.info(f"✅ Exported events to CSV: {path}")
-        except Exception as e:
-            log.error(f"❌ Failed to export CSV: {e}")
-
-    def export_json():
-        from tkinter import filedialog
-        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[["JSON Files", "*.json"]])
-        if not path:
-            return
-        try:
-            import json
-            export = []
-            for row in tree.get_children():
-                vals = tree.item(row)["values"]
-                export.append({
-                    "tick": vals[0], "round": vals[1], "type": vals[2],
-                    "name": vals[3], "detail": vals[4]
-                })
-            with open(path, "w", encoding='utf-8') as f:
-                json.dump(export, f, indent=2)
-            log.info(f"✅ Exported events to JSON: {path}")
-        except Exception as e:
-            log.error(f"❌ Failed to export JSON: {e}")
-
-    ttk.Button(export_frame, text="💾 Export to CSV", command=export_csv).pack(side="left", padx=10)
-    ttk.Button(export_frame, text="💾 Export to JSON", command=export_json).pack(side="left")
-
-# =============================================================================
-# Treeview Renderer — Just Content
-# =============================================================================
-
-def _render_event_tree(tree: ttk.Treeview, events: list) -> None:
-    """
-    Populate the given Treeview widget with structured CS2 event data.
-    """
-    log.debug(f"▶︎ _render_event_tree called, events count={len(events)}")
-    tree.delete(*tree.get_children())
-
-    columns = ["tick", "round", "type", "name", "detail"]
-    tree.configure(columns=columns, show="headings")
-
-    for col in columns:
-        tree.heading(col, text=col.capitalize())
+    # Treeview Column Headers
+    for col in EVENT_COLUMNS:
+        header = COLUMN_ALIASES.get(col, col.title())
+        tree.heading(col, text=header)
         tree.column(col, width=100, anchor="center")
 
-    for ev in events:
-        try:
-            ev_type = ev.get('type', 'Unknown')
-            tick = ev.get('tick', 0)
-            rnd = ev.get('round', -1)
-            name = ev.get('user_name') or ev.get('name') or ''
-            details = ev.get('details', {})
-            detail_str = details.get("string", str(details)) if isinstance(details, dict) else str(details)
-            row = [tick, rnd, ev_type, name, detail_str]
-            tree.insert('', 'end', values=row)
-        except Exception as e:
-            log.warning(f"⚠️ Event parsing error: {e}")
-            tree.insert('', 'end', values=["", "", "ERROR", "", str(e)])
+    tree.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
 
-# =============================================================================
-# Player Extractor for TreeView → Dropdown
-# =============================================================================
+    frame.grid_rowconfigure(0, weight=1)
+    frame.grid_columnconfigure(0, weight=1)
 
-def extract_players_from_event_tree(tree: ttk.Treeview) -> list:
-    log.info("🔍 Extracting players from TreeView")
-    seen = set()
-    players = []
-
-    for row_id in tree.get_children():
-        try:
-            values = tree.item(row_id)["values"]
-            if len(values) < 4:
-                continue
-            name = values[3].strip()
-            detail = values[4]
-
-            import re
-            sid_match = re.search(r"(STEAM_[0-5]:[01]:\d+|7656\d{13,})", str(detail))
-            steamid = sid_match.group(1) if sid_match else ""
-
-            key = f"{name}-{steamid}"
-            if name and key not in seen:
-                players.append({"name": name, "steamid": steamid})
-                seen.add(key)
-        except Exception as e:
-            log.warning(f"⚠️ Failed TreeView player extraction: {e}")
-
-    log.info(f"✅ Found {len(players)} players from event log")
-    return players
-
-# =============================================================================
-# Round Extractor for TreeView → Dropdown
-# =============================================================================
-
-def extract_rounds_from_event_tree(tree: ttk.Treeview) -> list:
-    log.info("🧪 Extracting rounds from TreeView")
-    seen = set()
-    rounds = []
-
-    for row_id in tree.get_children():
-        try:
-            values = tree.item(row_id)["values"]
-            if len(values) < 2:
-                continue
-            rnd = int(values[1])
-            if rnd not in seen:
-                seen.add(rnd)
-                rounds.append(rnd)
-        except Exception as e:
-            log.warning(f"⚠️ Failed to extract round: {e}")
-
-    log.info(f"✅ Found {len(rounds)} rounds from event log")
-    return sorted(rounds)
-
-# =============================================================================
-# Export Alias for main.py
-# =============================================================================
-display_event_log = event_log_tab_controller
-# event_log.py or utils/event_summary.py
-
-def generate_event_summary(data):
-    if not data or "events" not in data:
-        return ["⚠️ No events found in data to summarize"]
-
-    events = data["events"]
-    total_events = len(events)
-    event_type_counts = {}
-
+    # Fill in events
     for event in events:
-        etype = event.get("type", "Unknown")
-        event_type_counts[etype] = event_type_counts.get(etype, 0) + 1
+        values = [event.get(col, "") for col in EVENT_COLUMNS]
+        tree.insert("", "end", values=values)
 
-    lines = [f"✅ Parsed file with {total_events} events total", "Event Type Counts:"]
-    for etype, count in sorted(event_type_counts.items()):
-        lines.append(f"  • {etype}: {count}")
+    log.info(f"✅ Loaded {len(events)} events into Treeview.")
 
-    return lines
+
 # =============================================================================
-# EOF — event_log.py | PATCHED v2.3-R3 | TLOC: 216 pzr1H
+# BLOCK 3: Event Filtering Logic (Dropdowns and Refresh)
 # =============================================================================
+
+def create_event_filters(frame: ttk.Frame, tree: ttk.Treeview, events: List[Dict[str, Any]]):
+    """
+    GUI filtering controls for event log tab.
+
+    Args:
+        frame: Parent GUI frame
+        tree: Treeview widget to repopulate
+        events: Full event log list
+    """
+    log.info("🔎 Creating event log filters...")
+
+    filter_frame = ttk.Frame(frame)
+    filter_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky="ew")
+
+    # Collect unique values
+    players = sorted(set(e["player"] for e in events if "player" in e))
+    rounds = sorted(set(e["round"] for e in events if "round" in e))
+    types = sorted(set(e["name"] for e in events if "name" in e))
+
+    player_var = tk.StringVar()
+    round_var = tk.StringVar()
+    type_var = tk.StringVar()
+
+    # Player dropdown
+    ttk.Label(filter_frame, text="Player").grid(row=0, column=0)
+    player_dropdown = ttk.Combobox(filter_frame, textvariable=player_var, values=["All"] + players, state="readonly", width=15)
+    player_dropdown.grid(row=0, column=1)
+    player_dropdown.set("All")
+
+    # Round dropdown
+    ttk.Label(filter_frame, text="Round").grid(row=0, column=2)
+    round_dropdown = ttk.Combobox(filter_frame, textvariable=round_var, values=["All"] + [str(r) for r in rounds], state="readonly", width=10)
+    round_dropdown.grid(row=0, column=3)
+    round_dropdown.set("All")
+
+    # Type dropdown
+    ttk.Label(filter_frame, text="Type").grid(row=0, column=4)
+    type_dropdown = ttk.Combobox(filter_frame, textvariable=type_var, values=["All"] + types, state="readonly", width=20)
+    type_dropdown.grid(row=0, column=5)
+    type_dropdown.set("All")
+
+    def apply_filters(*args):
+        filtered = events
+        if player_var.get() != "All":
+            filtered = [e for e in filtered if e.get("player") == player_var.get()]
+        if round_var.get() != "All":
+            filtered = [e for e in filtered if str(e.get("round")) == round_var.get()]
+        if type_var.get() != "All":
+            filtered = [e for e in filtered if e.get("name") == type_var.get()]
+
+        tree.delete(*tree.get_children())
+        for e in filtered:
+            values = [e.get(col, "") for col in EVENT_COLUMNS]
+            tree.insert("", "end", values=values)
+
+    player_var.trace_add("write", apply_filters)
+    round_var.trace_add("write", apply_filters)
+    type_var.trace_add("write", apply_filters)
+
+    log.info("✅ Event filters initialized.")
+
+
+# =============================================================================
+# BLOCK 4: Export Controls (CSV, JSON) + Optional Tick Selection
+# =============================================================================
+
+import csv
+import json
+
+def add_export_buttons(frame: ttk.Frame, tree: ttk.Treeview, events: List[Dict[str, Any]]):
+    """
+    Export buttons to save filtered event log to CSV or JSON.
+    """
+    export_frame = ttk.Frame(frame)
+    export_frame.grid(row=2, column=0, columnspan=2, pady=4)
+
+    def export_csv():
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        if not file_path:
+            return
+        with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(EVENT_COLUMNS)
+            for item in tree.get_children():
+                values = tree.item(item)["values"]
+                writer.writerow(values)
+        messagebox.showinfo("Export", f"✅ Event log exported to {file_path}")
+
+    def export_json():
+        file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")])
+        if not file_path:
+            return
+        data = []
+        for item in tree.get_children():
+            row = tree.item(item)["values"]
+            data.append(dict(zip(EVENT_COLUMNS, row)))
+        with open(file_path, "w", encoding="utf-8") as jsonfile:
+            json.dump(data, jsonfile, indent=2)
+        messagebox.showinfo("Export", f"✅ Event log exported to {file_path}")
+
+    ttk.Button(export_frame, text="⬇ Export CSV", command=export_csv).grid(row=0, column=0, padx=5)
+    ttk.Button(export_frame, text="⬇ Export JSON", command=export_json).grid(row=0, column=1, padx=5)
+
+    log.info("📤 Export buttons loaded.")
+
+
+# =============================================================================
+# BLOCK 5: Tick Trace Binding and Console Hook (Optional)
+# =============================================================================
+
+def bind_tick_trace(tree: ttk.Treeview):
+    """
+    Optional: bind row selection to console tick printout or event callback.
+    Used for syncing with parser playback or frame highlighting.
+    """
+    def on_select(event):
+        selected = tree.focus()
+        if not selected:
+            return
+        values = tree.item(selected)["values"]
+        tick = values[0] if values else None
+        if tick:
+            log.info(f"🎯 Selected Tick: {tick}")
+            print(f"[TRACE] Event tick selected: {tick}")
+
+    tree.bind("<<TreeviewSelect>>", on_select)

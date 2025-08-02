@@ -3,6 +3,10 @@
 # data_sanitizer.py — Patch & Validate JSON using .log file (Full Version)
 # =============================================================================
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../cs2_parser")))
 import json
 import re
 from pathlib import Path
@@ -455,7 +459,62 @@ def generate_sanitizer_report(json_path: str, log_path: str, out_path: str = Non
 # =============================================================================
 # EOB5 — CLI Bootstrap + EOF Marker
 # =============================================================================
+# ADD THIS FUNCTION TO THE END OF YOUR sanitizer_report.py FILE:
 
+def generate_sanitizer_report(data: Dict[str, Any]) -> None:
+        """
+        Generate a sanitizer report from data dictionary (called by main GUI).
+        
+        Args:
+            data: Parsed demo data dictionary
+        """
+        try:
+            import time
+            log.info("🩺 Generating sanitizer report from data...")
+            
+            if not isinstance(data, dict):
+                log.error("❌ Invalid data type for sanitizer report")
+                return
+            
+            # Basic data analysis
+            analysis = {
+                "timestamp": time.time(),
+                "total_keys": len(data.keys()),
+                "main_keys": list(data.keys()),
+                "event_count": len(data.get("events", [])),
+                "player_count": len(data.get("playerDropdown", [])),
+                "has_stats": bool(data.get("playerStats")),
+                "has_rounds": bool(data.get("round_indices"))
+            }
+            
+            # Log analysis
+            log.info("🩺 SANITIZER REPORT:")
+            log.info(f"   📊 Data keys: {analysis['total_keys']}")
+            log.info(f"   📋 Events: {analysis['event_count']}")
+            log.info(f"   👥 Players: {analysis['player_count']}")
+            log.info(f"   📈 Has stats: {analysis['has_stats']}")
+            log.info(f"   🎯 Has rounds: {analysis['has_rounds']}")
+            
+            # Check for issues
+            issues = []
+            if analysis['event_count'] == 0:
+                issues.append("No events found")
+            if analysis['player_count'] == 0:
+                issues.append("No players found")
+            if not analysis['has_stats']:
+                issues.append("No player stats")
+            
+            if issues:
+                log.warning(f"⚠️ Issues found: {', '.join(issues)}")
+            else:
+                log.info("✅ No critical issues detected")
+                
+        except Exception as e:
+            log.error(f"❌ Sanitizer report failed: {e}")
+
+# Also add this import at the top if not present:
+# import time
+# from typing import Dict, Any
 # =============================================================================
 # Block 5: CLI Orchestration
 # =============================================================================

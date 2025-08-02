@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../cs2_parser")))
 #!/usr/bin/env python3
 
 # =============================================================================
@@ -17,9 +21,10 @@ from typing import List, Dict
 import requests
 from bs4 import BeautifulSoup
 
-from data_sanitizer import sanitize_metadata
-from utils.cross_module_debugging import trace_log
-
+from utils.data_sanitizer import sanitize_metadata
+from utils.gui.debug_console import trace_log
+from dotenv import load_dotenv
+load_dotenv()
 log = logging.getLogger(__name__)
 
 # =============================================================================

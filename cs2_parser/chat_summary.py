@@ -1,87 +1,78 @@
 #!/usr/bin/env python3
 # =============================================================================
-# chat_summary.py — Chat Message Extractor + Summary Renderer
-# Timestamp-TOP: 2025-07-26T12:10-EDT | Version: v0.0001-LOCKED
-# Source of Truth: parsed_data["events"] → event["type"] == "chat_message"
+# chat_summary.py — GUI Display for In-Game Chat Logs
 # =============================================================================
 
 import logging
-log = logging.getLogger(__name__)
+import tkinter as tk
+from tkinter import ttk
 from typing import List, Dict, Any
 
-try:
-    from cross_module_debugging import trace_log
-except ImportError:
-    def trace_log(func): return func
-
 log = logging.getLogger(__name__)
-log.info("💬 chat_summary.py loaded")
+
+CHAT_COLUMNS = ["tick", "player", "message"]
+
+COLUMN_ALIASES = {
+    "tick": "Tick",
+    "player": "Player",
+    "message": "Message"
+}
 
 # =============================================================================
-# BLOCK 1: Extract Chat Messages
+# BLOCK 1: Chat Log Treeview Construction
 # =============================================================================
-@trace_log
-def extract_chat_messages(event_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+def generate_chat_summary(parent_tab: ttk.Notebook, chat_data: List[Dict[str, Any]]):
     """
-    Filters chat_message events and returns cleaned chat dicts.
+    Constructs the Chat Summary tab in the GUI.
+
+    Args:
+        parent_tab (ttk.Notebook): Notebook to attach the chat tab to.
+        chat_data (List[Dict[str, Any]]): Parsed chat log entries.
     """
-    messages = []
+    log.info("💬 Building Chat Summary tab...")
 
-    for event in event_data:
-        if event.get("type") != "chat_message":
-            continue
+    frame = ttk.Frame(parent_tab)
+    parent_tab.add(frame, text="💬 Chat Summary")
 
-        msg = {
-            "time": event.get("seconds", 0),
-            "player": event.get("player", {}).get("name", "Unknown"),
-            "team": event.get("player", {}).get("team", "Unknown"),
-            "text": event.get("text", ""),
-        }
-        messages.append(msg)
+    tree = ttk.Treeview(frame, columns=CHAT_COLUMNS, show="headings", height=20)
+    scroll_y = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=scroll_y.set)
 
-    if not messages:
-        log.warning("📭 No chat messages found")
-    return messages
+    for col in CHAT_COLUMNS:
+        header = COLUMN_ALIASES.get(col, col.title())
+        width = 80 if col != "message" else 400
+        tree.heading(col, text=header)
+        tree.column(col, anchor="center", width=width)
+
+    tree.grid(row=0, column=0, sticky="nsew")
+    scroll_y.grid(row=0, column=1, sticky="ns")
+
+    frame.grid_rowconfigure(0, weight=1)
+    frame.grid_columnconfigure(0, weight=1)
+
+    for entry in chat_data:
+        values = [entry.get(col, "") for col in CHAT_COLUMNS]
+        tree.insert("", "end", values=values)
+
+    log.info(f"✅ Loaded {len(chat_data)} chat entries into Treeview.")
 
 # =============================================================================
-# BLOCK 2: Format Chat as Plain Text
+# BLOCK 2: Optional Tick Trace from Chat Logs
 # =============================================================================
-@trace_log
-def format_chat_log(chat_messages: List[Dict[str, Any]]) -> str:
+
+def bind_chat_tick_trace(tree: ttk.Treeview):
     """
-    Returns formatted plain text chat log.
+    Binds event to print selected tick from chat logs — useful for replay alignment or highlighting.
     """
-    lines = []
-    for msg in chat_messages:
-        ts = f"[{msg['time']:>5.1f}s]"
-        lines.append(f"{ts} {msg['player']} ({msg['team']}): {msg['text']}")
+    def on_select(event):
+        selected = tree.focus()
+        if not selected:
+            return
+        values = tree.item(selected)["values"]
+        tick = values[0] if values else None
+        if tick:
+            log.info(f"💬 Tick from selected chat entry: {tick}")
+            print(f"[CHAT TRACE] Selected Tick: {tick}")
 
-    return "\n".join(lines)
-# =============================================================================
-# BLOCK 3: GUI Controller for Chat Tab
-# =============================================================================
-@trace_log
-def display_chat_summary(parent, data: Dict[str, Any]) -> None:
-    """
-    GUI controller to render chat summary in a tabbed ScrolledText box.
-    Injects formatted chat if available; otherwise warns.
-    """
-    from tkinter.scrolledtext import ScrolledText
-    for widget in parent.winfo_children():
-        widget.destroy()
-
-    events = data.get("events", [])
-    chat_messages = extract_chat_messages(events)
-
-    scrolled = ScrolledText(parent, wrap="word", font=("Courier", 10))
-    scrolled.pack(fill="both", expand=True)
-
-    if not chat_messages:
-        scrolled.insert("end", "📭 No chat messages found in this match.\n")
-    else:
-        scrolled.insert("end", format_chat_log(chat_messages))
-
-    scrolled.configure(state="disabled")  # Make it read-only
-# =============================================================================
-# EOF: chat_summary.py — TLOC: 86 | PATCHED v0.0002 | Author: Athlenia QA
-# =============================================================================
+    tree.bind("<<TreeviewSelect>>", on_select)
