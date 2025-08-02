@@ -1,123 +1,105 @@
-# CS2 ACS GUI – Carmack Edition α
+## CS2-ACS-v2-A2M Forensic Inspection & Audit
 
-CS2 ACS GUI is an **alpha** graphical front‑end for analysing Counter‑Strike 2 demo files.  It wraps an external parser (`CS2‑ACSv1.exe`) and presents the extracted data—events, statistics and chat logs—through a multi‑tab Tkinter interface.
+### File Structure (with TLOC, Functions, and Responsibilities):
+```
+CS2-ACS-v2/
+│
+├── CS2-ACS-v2.exe                            # Pre-compiled v2 parser binary
+├── file_loader.py (466 TLOC, 14 functions)   # Loads demo output files, manages V2/V3/legacy support, SteamID conversion
+├── log_utils.py (11 TLOC, 1 function)         # Centralized logging configuration
+├── main.py (1392 TLOC, 69 functions)          # Tkinter GUI logic, tab routing, user interaction, dropdowns, scout reporting
+├── trace_debug.py (20 TLOC, 1 function)       # Debugging utility for logging snapshots
+├── trace_debug_gui.py (13 TLOC, 2 functions)  # Simple debug overlay window with logging pane
+│
+├── asset/                                     # GUI assets and legacy backups
+│   ├── CS2-col.png, CS2-gray.png, CS2.png      # Logo variants
+│   ├── CS2-tb-fill.gif                         # Animated banner
+│   ├── file structure.png, image.png           # Diagrams/screenshots
+│   └── old.main.py (230 TLOC)                 # Legacy main.py snapshot
+│
+├── cs2_parser/                                # Core parsing and visualization logic
+│   ├── chat_summary.py (61 TLOC, 3 functions)         # Chat log rendering and trace binding
+│   ├── damage_summary.py (70 TLOC, 3 functions)       # Damage timeline tab with click-to-jump
+│   ├── event_log.py (163 TLOC, 8 functions)           # Central event log tab with filters and export
+│   ├── fallback_parser.py (106 TLOC, 2 functions)     # Generates stat estimates if parsing fails
+│   ├── replay_round.py (900 TLOC, 24 functions)       # Round replay tab logic and tactical breakdowns
+│   ├── stats_builder.py (136 TLOC, 4 functions)       # Derives player statistics from event streams
+│   └── stats_summary.py (49 TLOC, 1 function)         # Builds player stat overview tab
+│
+└── utils/
+    ├── avatar_downloader.py (21 TLOC, 1 function)      # Downloads Steam avatars
+    ├── cross_module_debugging.py (105 TLOC, 7 functions) # Cross-module trace hooks, forward logs
+    ├── data_sanitizer.py (566 TLOC, 16 functions)       # Validates, repairs, and normalizes demo output
+    ├── dropdown_utils.py (176 TLOC, 5 functions)        # Player dropdown extraction from various formats
+    ├── event_utils.py (7 TLOC, 3 functions)             # Lightweight event type helpers
+    ├── go_struct_parser.py (32 TLOC, 1 function)        # Parses Go struct text dumps for debugging
+    ├── logging_config.py (38 TLOC, 1 function)          # Alternate logger setup
+    ├── navmesh_utils.py (139 TLOC, 8 functions)         # Exports movement and aim sequences
+    ├── pi_fetch.py (211 TLOC, 5 functions)              # API + cache fetch for scout profiles
+    ├── risk_score.py (16 TLOC, 2 functions)             # Threat tiering from profile stats
+    ├── round_dropdown_utils.py (314 TLOC, 9 functions)  # Builds round dropdown and metadata
+    ├── round_utils.py (44 TLOC, 1 function)             # Converts round metadata to playback form
+    ├── sanitizer_report.py (481 TLOC, 12 functions)     # Generates logs, reports, patched output
+    ├── scraper_dispatch.py (64 TLOC, 1 function)        # Entry point for profile fetch and merge
+    ├── steam_utils.py (315 TLOC, 12 functions)          # Steam ID conversions and analysis
+    ├── tickrate.py (5 TLOC, 1 function)                 # Extracts tickrate from metadata
+    ├── gui/
+    │   ├── debug_console.py (105 TLOC, 7 functions)     # GUI logger window (possibly redundant)
+    │   ├── enhanced_profile_block.py (40 TLOC, 1 function) # Builds GUI profile card
+    │   └── scout_report.py (102 TLOC, 4 functions)       # Profile assessment, threat level logic
+    └── scrapers/
+        ├── csst_scraper.py (50 TLOC, 1 function)        # Scrapes CSST player page
+        ├── faceitfinder_scraper.py (55 TLOC, 1 function)# Scrapes FaceitFinder page
+        ├── legitproof_scraper.py (55 TLOC, 1 function)  # Scrapes LegitProof player data
+        ├── scout_fallback_extractor.py (142 TLOC, 6 functions) # Rebuilds partial profiles from events
+        └── steam_scraper.py (51 TLOC, 1 function)       # Extracts Steam public profile data
+```
 
-> **Status:** Alpha.  Expect missing features and unstable behaviour while the project matures.
+### Data Flow Diagram:
+```
+User selects .dem file
+   ↓
+file_loader.py parses JSON via CS2-ACS-v2.exe
+   ↓
+file_loader returns dict → passed to main.py
+   ↓
+main.py uses:
+    → cs2_parser modules to populate tabs
+    → utils modules for sanitization + fallback
+    → gui/scout_report.py for profile scoring
+   ↓
+All output routed into Tkinter UI (main.py)
+```
 
----
+### Checklist:
+- [ ] Validate each scraper module and error fallback logic
+- [ ] Confirm dropdown generation works with legacy + v2
+- [ ] Stress test `replay_round.py` for out-of-bounds events
+- [ ] Conduct runtime memory footprint analysis (Tkinter threads)
+- [ ] Trace GUI tab build order for load performance
+- [ ] Ensure all JSON formats have valid fallback mode
+- [ ] Confirm debug logging is scoped correctly and not leaking
 
-## Overview
+### Challenges:
+- 🔄 Parsing must gracefully degrade across v1, v2, fallback, partial
+- 🔐 Anti-cheat logic must not be spoofable — audit profile spoof defenses
+- 🧩 Steam ID conversion logic must be 100% reliable, or profile mapping will break
+- 🕵️ Replay event binding must match metadata (tick, round, player)
 
-- **Purpose:** Provide a desktop GUI for parsing `.dem` recordings and exploring the resulting match data without needing to drop into a terminal or write custom scripts.
-- **Technology:** Python 3.8+, Tkinter for the UI, pandas for data manipulation, and a third‑party binary to convert demos into JSON.
+### Knowledge Transfer Brief:
+This repo is a high-integrity parser frontend for Counter-Strike 2 matches. It leverages a compiled Go-based parser (CS2-ACS-v2.exe) to emit JSON, then post-processes this via Python. The Python GUI provides forensic-level inspection of match data, using a modular parser suite and enriched online profile fetchers. Scrapers are used to compute scouting reports for every player, and all modules are audited for fallback and validation.
 
----
+### Next Steps:
+1. [ ] Validate Steam profile parsing with offline cache disabled
+2. [ ] Confirm correct population of dropdowns for all demo types
+3. [ ] Expand `risk_score.py` to include match behavior, not just profile stats
+4. [ ] Re-enable `trace_debug_gui.py` in safe testing mode with toggle
+5. [ ] Test failover scenarios in air-gapped and spoofed data conditions
 
-## Current Features (Alpha)
+### Onboarding Recommendations:
+- Start from `main.py`, trace dropdown + file loading logic
+- Open a `.dem` file and observe logging/output behavior
+- Review all `cs2_parser` tab builders for UI data rendering
+- Check fallback handling in `file_loader.py` and `data_sanitizer.py`
+- Validate a full match walkthrough using replay_round and export
 
-- **Self‑contained GUI** using Tkinter; no web server required.
-- **File loader:** select a `.dem` or `.json` file, run the external parser asynchronously, and cache parsed data to prevent re‑parsing.
-- **Tabbed layout** with dedicated views:
-  - **Console/Loader tab** for file selection, parsing progress and log messages.
-  - **Event Log tab** showing rounds and events in a tree view; click on a round to expand its events.
-  - **Stats Summary tab** computing per‑player and per‑team statistics (kills, deaths, assists, headshot percentage, ADR, damage dealt, utility usage).  Columns are sortable.
-  - **Chat & Summary tab** displaying chat messages grouped by round, plus basic match metadata (map, teams, duration, round count).
-- **Data caching:** parsed JSON files are stored in `pewpew/`, so subsequent loads of the same match skip the heavy parsing step.
-- **Modular structure:** parsing logic is isolated in `cs2_parser/`, GUI widgets in their respective files, and reusable helpers in `utils/`.
-
----
-
-## Design Principles & Architecture
-
-- **Separation of concerns:** parsing, data processing and UI rendering are split into distinct modules.  This makes it easier to test, extend or replace individual parts without affecting the whole system.
-- **Asynchronous processing:** heavy operations (like demo parsing) run in worker threads so the UI remains responsive.
-- **Extensible UI:** each major view is encapsulated in its own class (`EventLog`, `StatsSummary`, `ChatSummary`) and added to the `Notebook` in `main.py`.  New tabs can be implemented as additional classes following the same pattern.
-- **Planned plugin architecture:** future work will allow third‑party developers to drop a Python module into a `plugins/` directory and have it automatically registered as a new tab.
-- **Cross‑platform compatibility:** uses `pathlib` and avoids OS‑specific APIs wherever possible.
-
----
-
-## Challenges & Fixes
-
-1. **Large file parsing performance** – parsing `.dem` files can take minutes and initially blocked the UI.  *Fix:* the parser runs in a background thread with progress reporting.
-2. **External parser reliability** – crashes of `CS2‑ACSv1.exe` would leave the GUI in a broken state.  *Fix:* added exception handling to reset the UI and surface the error to the user.
-3. **Cross‑platform path handling** – Windows and Unix systems handle file paths differently.  *Fix:* use `pathlib` and `os` modules to construct paths, and normalise case where needed.
-4. **Table interactivity** – Tkinter’s basic widgets don’t provide sorting or column resizing.  *Fix:* added click handlers and custom sorting functions; future versions will consider alternative GUI frameworks or custom table widgets.
-5. **Unresponsive UI during heavy computations** – initial implementations recomputed statistics and refreshed the UI on every event selection.  *Fix:* decouple computation from UI; compute summaries once per load and update only when necessary.
-
----
-
-## Detailed Roadmap & Planned Enhancements
-
-The following items outline the short‑term and long‑term vision for the project.  Contributions and feedback on these priorities are welcome.
-
-### Short‑Term (next few versions)
-
-- **Enhanced export functionality**
-  - Add buttons to export the event log and stats tables directly to CSV/Excel/JSON.
-  - Provide options to include/exclude certain columns or players when exporting.
-
-- **Improved event filtering & search**
-  - Allow users to filter the event log by event type (kills, bomb events, grenades) and search by player name or weapon.
-  - Implement a timeline slider to jump between rounds quickly.
-
-- **Basic replay integration**
-  - Integrate with an existing demo player (e.g. Demofile Parser or built‑in game API) to allow jumping to a tick when clicking an event.
-
-- **Customizable UI themes**
-  - Support dark and light modes, and allow end users to define custom colour schemes via a config file.
-
-- **Error reporting & logging improvements**
-  - Centralise error messages in a dedicated “Logs” tab.
-  - Offer the option to save logs to a file for easier bug reporting.
-
-### Medium‑Term
-
-- **Advanced heuristics & analytics**
-  - Implement calculations for reaction time, counter‑strafe rating, spray transfer accuracy, economic impact and clutch success rate.
-  - Generate heatmaps of player movement and grenade throws (requires integration with a spatial data library).
-
-- **Multi‑match comparison**
-  - Introduce a “Summary Dashboard” to compare player statistics across multiple matches.
-  - Allow users to aggregate stats over a series (e.g. best‑of‑3) and visualise trends.
-
-- **Plugin system & API**
-  - Define a plugin interface so new analysis modules can be dropped into a `plugins/` folder and automatically discovered.
-  - Expose an internal API for programmatic access to parsed data (e.g. via REST or Python class methods).
-
-- **Refactoring to a modern GUI toolkit**
-  - Evaluate frameworks like PyQt/PySide or Kivy for richer tables, charts and more responsive UI components.
-
-- **Testing and CI/CD**
-  - Add unit tests for core modules (`file_loader`, `stats_summary`, etc.).
-  - Set up continuous integration to run tests and linters on each pull request.
-
-### Long‑Term Vision
-
-- **Standalone installer & cross‑platform packaging**
-  - Distribute the app as a single executable for Windows, macOS and Linux using PyInstaller or a similar tool.
-  - Integrate automatic updates.
-
-- **Cloud/Server mode**
-  - Provide an optional server component that can parse demos on a remote machine and serve results to the GUI or a web dashboard.
-
-- **Community‑maintained parser**
-  - Replace the proprietary `CS2‑ACSv1.exe` with an open‑source parser (if one becomes available) to remove binary dependencies.
-
-- **Machine learning insights**
-  - Explore models that predict round outcomes based on early round events, player performance trends or team economy decisions.
-
----
-
-## Contributing
-
-1. Fork the repository and create a feature branch (`git checkout -b feature/your-idea`).
-2. Follow PEP 8 style guidelines and use descriptive commit messages.
-3. Test your changes; automated tests will be added as the project matures.
-4. Submit a pull request with a clear description of your changes and why they’re needed.
-
----
-
-## License & Disclaimer
-
-No license has been selected as of this alpha release; please contact the project maintainer for reuse terms.  This tool is not associated with Valve or the official Counter‑Strike development team.  The `CS2‑ACSv1.exe` parser is an external dependency with its own licensing.  Use this GUI at your own risk.
