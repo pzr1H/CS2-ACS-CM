@@ -48,13 +48,14 @@ CS2-ACS is a comprehensive pipeline for parsing Counter-Strike 2 demo files usin
    git clone https://github.com/pzr1H/CS2-ACS-CM.git
    cd CS2-ACS-CM
    ```
+
 2. **Build or download the parser executable**:
    - Precompiled: `CS2-ACS-v3.exe` is included in the root directory.
-   - Build from source (requires Go):
+   #LIES- Build from source (requires Go):
      ```bash
      cd cs2_parser
      go build -o ../CS2-ACS-v3.exe
-     ```
+     ```#LIES ^^
 3. **Install Python dependencies**:
    ```bash
    pip install -r requirements.txt
