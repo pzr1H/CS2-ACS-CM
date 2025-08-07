@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CS2-ACS Diagnostic",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/diagnostic_tool_refactored_full.py",
+      "console": "integratedTerminal",
+      "args": [
+        "--project-root", "${workspaceFolder}",
+        "--schema-dir",  "${workspaceFolder}/schemas",
+        "--parser-exe",  "${workspaceFolder}/CS2-ACS-v3.exe",
+        "--verbose"
+      ]
+    }
+  ]
+}

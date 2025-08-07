@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# =============================================================================
+# stats_builder.py — Player Stats Computation Pipeline
+# BLOCK 1: Imports, Logger, Stat Map
+# =============================================================================
+
+import logging
+from typing import Dict, List, Any
+from collections import defaultdict
+import math
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
+# Base stats computed
+BASE_STATS = [
+    "kills", "deaths", "assists", "headshots", "total_damage", "rounds_played"
+]
+
+# Advanced stats
+ADVANCED_STATS = [
+    "adr", "hs_percent", "kast", "entry_success", "multi_kills", "reaction_time_ms",
+    "velocity_at_impact", "hitgroup_distribution", "crosshair_placement_score",
+    "blind_kills", "smoke_kills", "air_kills", "wallbang_kills"
+]
+
+# Merged output format
+ALL_STATS = BASE_STATS + ADVANCED_STATS
+
+# Define player stat containers
+def default_player_stat_entry():
+    return {stat: 0 for stat in ALL_STATS}
+
+
+# =============================================================================
+# BLOCK 2: Main Entrypoint and Player Loop
+# =============================================================================
+
+def compute_stats(player_events: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    """
+    Compute stats per player from event log.
+
+    Args:
+        player_events: Dict mapping SteamID -> List of player-specific events
+
+    Returns:
+        Dict mapping SteamID -> Stats dict
+    """
+    log.info("📊 Computing stats for players...")
+    player_stats = defaultdict(default_player_stat_entry)
+
+    for steam_id, events in player_events.items():
+        for event in events:
+            try:
+                _process_event(player_stats[steam_id], event)
+            except Exception as e:
+                log.warning(f"⚠️ Error processing event for {steam_id}: {e}")
+
+    _finalize_derived_metrics(player_stats)
+    return player_stats
+
+
+# =============================================================================
+# BLOCK 3: Event Parsing and Stat Extraction
+# =============================================================================
+
+def _process_event(statline: Dict[str, Any], event: Dict[str, Any]):
+    """
+    Updates statline in-place with data from a single event.
+    """
+    e_type = event.get("type")
+
+    if e_type == "kill":
+        statline["kills"] += 1
+        if event.get("headshot"):
+            statline["headshots"] += 1
+        if event.get("through_smoke"):
+            statline["smoke_kills"] += 1
+        if event.get("in_air"):
+            statline["air_kills"] += 1
+        if event.get("attacker_blind"):
+            statline["blind_kills"] += 1
+        if event.get("penetrated_objects", 0) > 0:
+            statline["wallbang_kills"] += 1
+
+    elif e_type == "death":
+        statline["deaths"] += 1
+
+    elif e_type == "assist":
+        statline["assists"] += 1
+
+    elif e_type == "damage":
+        dmg = event.get("value", 0)
+        statline["total_damage"] += dmg
+        # Hitgroup breakdown
+        hg = event.get("hitgroup")
+        if hg:
+            if "hitgroup_distribution" not in statline:
+                statline["hitgroup_distribution"] = {}
+            statline["hitgroup_distribution"][hg] = statline["hitgroup_distribution"].get(hg, 0) + 1
+
+    elif e_type == "round_start":
+        statline["rounds_played"] += 1
+
+    elif e_type == "reaction_time":
+        rt = event.get("ms")
+        if rt is not None:
+            statline["reaction_time_ms"] += rt
+            statline["reaction_time_events"] = statline.get("reaction_time_events", 0) + 1
+
+    elif e_type == "impact_velocity":
+        pct = event.get("percent", 0)
+        statline["velocity_at_impact"] += pct
+        statline["velocity_events"] = statline.get("velocity_events", 0) + 1
+
+    elif e_type == "crosshair_score":
+        score = event.get("score", 0)
+        statline["crosshair_placement_score"] += score
+        statline["crosshair_events"] = statline.get("crosshair_events", 0) + 1
+
+
+# =============================================================================
+# BLOCK 4: Finalize Derived Metrics (ADR, HS%, Velocity, etc.)
+# =============================================================================
+
+def _finalize_derived_metrics(stats: Dict[str, Dict[str, Any]]):
+    for steam_id, stat in stats.items():
+        rounds = stat.get("rounds_played", 0)
+        kills = stat.get("kills", 0)
+        headshots = stat.get("headshots", 0)
+        damage = stat.get("total_damage", 0)
+
+        # ADR
+        stat["adr"] = round(damage / rounds, 2) if rounds else 0.0
+
+        # HS%
+        stat["hs_percent"] = round(100 * headshots / kills, 1) if kills else 0.0
+
+        # Reaction Time
+        rt_events = stat.pop("reaction_time_events", 0)
+        stat["reaction_time_ms"] = round(stat["reaction_time_ms"] / rt_events, 2) if rt_events else 0.0
+
+        # Velocity %
+        vel_events = stat.pop("velocity_events", 0)
+        stat["velocity_at_impact"] = round(stat["velocity_at_impact"] / vel_events, 1) if vel_events else 0.0
+
+        # Crosshair Placement
+        cs_events = stat.pop("crosshair_events", 0)
+        stat["crosshair_placement_score"] = round(stat["crosshair_placement_score"] / cs_events, 1) if cs_events else 0.0
+
+        # Hitgroup cleanup
+        if "hitgroup_distribution" not in stat:
+            stat["hitgroup_distribution"] = {}
+
+        # Optional: normalize other ratios here
+
+
+# =============================================================================
+# BLOCK 5: CLI Test (Optional for Validation)
+# =============================================================================
+
+if __name__ == "__main__":
+    import json
+    import sys
+    from pprint import pprint
+
+    if len(sys.argv) != 2:
+        print("Usage: python stats_builder.py <player_events.json>")
+        sys.exit(1)
+
+    path = sys.argv[1]
+    with open(path, "r", encoding="utf-8") as f:
+        events = json.load(f)
+
+    stats = compute_stats(events)
+    pprint(stats)

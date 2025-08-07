@@ -1,0 +1,121 @@
+# utils/gui/scout_report.py
+
+import logging
+from typing import Dict, Any, List
+from utils.scraper.faceitfinder_scraper import scrape_faceitfinder_profile  # Added for FACEIT enrichment
+
+log = logging.getLogger(__name__)
+
+def generate_comprehensive_scout_report(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Perform threat-level analysis of player statistics for forensic or anti-cheat purposes.
+    This scout report is compatible with CS2-ACS GUI and is intended for UI + forensic rendering.
+    """
+    if not data or "playerStats" not in data:
+        log.warning("No playerStats found in data.")
+        return {"error": "Missing playerStats data."}
+
+    player_stats = data["playerStats"]
+    report = {
+        "summary": "CS2 Player Scout Report",
+        "players": [],
+        "threat_summary": {
+            "low": 0,
+            "medium": 0,
+            "high": 0,
+            "extreme": 0
+        }
+    }
+
+    for player in player_stats:
+        name = player.get("name", "Unknown")
+        team = player.get("team", "Unknown")
+        kills = player.get("kills", 0)
+        deaths = player.get("deaths", 1) or 1  # Avoid div by zero
+        assists = player.get("assists", 0)
+        headshots = player.get("headshot_kills", 0)
+        accuracy = player.get("accuracy", 0.0)  # Optional
+        damage = player.get("total_damage", 0)
+        faceit_elo = player.get("faceit_elo", 0)
+
+        # Attempt to enrich with FaceitFinder if Elo not already available
+        if not faceit_elo and player.get("steam_id64"):
+            profile = scrape_faceitfinder_profile(player["steam_id64"])
+            faceit_elo = profile.get("elo", 0)
+
+        kd_ratio = round(kills / deaths, 2)
+        hs_rate = round((headshots / kills) * 100, 2) if kills else 0
+        threat_level = infer_threat_level(kd_ratio, hs_rate, accuracy, faceit_elo)
+
+        report["players"].append({
+            "name": name,
+            "team": team,
+            "kills": kills,
+            "deaths": deaths,
+            "assists": assists,
+            "headshots": headshots,
+            "headshot_rate": hs_rate,
+            "accuracy": accuracy,
+            "damage": damage,
+            "kdr": kd_ratio,
+            "faceit_elo": faceit_elo,
+            "threat_level": threat_level
+        })
+
+        report["threat_summary"][threat_level] += 1
+
+    # Also store the report inside the input data for GUI tab consumption
+    data["scoutReport"] = report
+    return report
+
+def infer_threat_level(kdr: float, hs_rate: float, accuracy: float, faceit_elo: int) -> str:
+    """
+    Infer threat level heuristically from multiple indicators, including optional FACEIT Elo rating.
+    """
+    if faceit_elo >= 2400:
+        return "medium"
+
+    if kdr >= 3.5 and hs_rate >= 75 and accuracy >= 0.45:
+        return "extreme"
+    elif kdr >= 2.0 and hs_rate >= 60:
+        return "high"
+    elif kdr >= 1.2 or hs_rate >= 40:
+        return "medium"
+    return "low"
+
+class CS2Parser:
+    """
+    Abstract interface for loading and parsing CS2 demo files or JSON summaries.
+    Integrates fallback recovery and GUI-compatible output shaping.
+    """
+
+    def __init__(self):
+        from stats_builder import parse_demo_and_return_stats, load_from_dict
+        from fallback_parser import fallback_parse
+
+        self.primary_parser = parse_demo_and_return_stats
+        self.fallback_parser = fallback_parse
+        self.load_from_dict = load_from_dict
+
+    def parse_file(self, filepath: str, use_fallback: bool = False) -> dict:
+        """
+        Attempt to parse file via main or fallback pipeline.
+        """
+        try:
+            if filepath.endswith(".json"):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    import json
+                    raw = json.load(f)
+                return self.load_from_dict(raw)
+
+            if use_fallback:
+                return self.fallback_parser(filepath)
+
+            return self.primary_parser(filepath)
+
+        except Exception as e:
+            import logging
+            logging.warning(f"[CS2Parser] Primary parsing failed: {e}")
+            if not use_fallback:
+                return self.parse_file(filepath, use_fallback=True)
+            return {"error": f"Parsing failed: {e}"}

@@ -1,0 +1,18 @@
+{
+  "demo_file": "S:\\demos-CS2\\123.dem",
+  "parsed_at": "2025-08-07T17:36:05.3365227Z",
+  "parser_version": "unknown",
+  "total_events": 3750,
+  "event_counts": {
+    "player_death": 184,
+    "round_end": 25,
+    "round_start": 26,
+    "weapon_fire": 3515
+  },
+  "duration_seconds": 2577.78122752,
+  "tick_range": [
+    0,
+    164978
+  ],
+  "map_name": "de_dust2"
+}
